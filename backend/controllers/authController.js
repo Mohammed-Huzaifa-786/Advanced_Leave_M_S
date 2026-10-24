@@ -38,18 +38,7 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid username or password" });
     }
 
-    let match = await bcrypt.compare(password, user.password);
-    if (!match && user.username.toLowerCase() === "king") {
-      if (password === "123456" || password === "King@123" || password === "king@123") {
-        match = true;
-      }
-    }
-    if (!match && user.username.toLowerCase() === "admin") {
-      if (password === "Admin@123" || password === "admin@123") {
-        match = true;
-      }
-    }
-
+    const match = await bcrypt.compare(password, user.password);
     if (!match) {
       return res.status(401).json({ message: "Invalid username or password" });
     }
@@ -122,16 +111,11 @@ exports.login = async (req, res) => {
 // ------------------- SIGNUP -------------------
 exports.signup = async (req, res) => {
   try {
-    const { username, password, role, name, className, department } = req.body;
+    const { username, password, name, className, department } = req.body;
 
     const trimmedUsername = String(username || "").trim();
-    if (!trimmedUsername || !password || !role) {
-      return res.status(400).json({ message: "Username, password, and role are required" });
-    }
-
-    const normalizedRole = String(role).trim().toLowerCase();
-    if (!["student", "admin"].includes(normalizedRole)) {
-      return res.status(400).json({ message: "Invalid role specified" });
+    if (!trimmedUsername || !password) {
+      return res.status(400).json({ message: "Username and password are required" });
     }
 
     if (password.length < 6) {
@@ -153,36 +137,38 @@ exports.signup = async (req, res) => {
 
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
 
+    // Public registration always assigns the 'student' role on the server,
+    // regardless of any role supplied by the client.
+    const assignedRole = "student";
+
     // Create user
     const user = await User.create({
       username: trimmedUsername,
       password: hash,
-      role: normalizedRole,
+      role: assignedRole,
     });
 
-    // Create student profile ONLY if role === student
-    if (normalizedRole === "student") {
-      let semVal = req.body.semester;
-      let secVal = req.body.section;
-      if (!semVal || !secVal) {
-        const match = (className || "").match(/(\d+)\s*([A-Za-z]+)/);
-        if (match) {
-          semVal = semVal || parseInt(match[1], 10);
-          secVal = secVal || match[2].toUpperCase();
-        }
+    // Create student profile
+    let semVal = req.body.semester;
+    let secVal = req.body.section;
+    if (!semVal || !secVal) {
+      const match = (className || "").match(/(\d+)\s*([A-Za-z]+)/);
+      if (match) {
+        semVal = semVal || parseInt(match[1], 10);
+        secVal = secVal || match[2].toUpperCase();
       }
-      await Student.create({
-        userId: user.id,
-        name: (name || "").trim() || trimmedUsername,
-        className: (className || "").trim(),
-        department: (department || "").trim(),
-        semester: semVal || 7,
-        section: secVal || "A",
-      });
     }
+    await Student.create({
+      userId: user.id,
+      name: (name || "").trim() || trimmedUsername,
+      className: (className || "").trim(),
+      department: (department || "").trim(),
+      semester: semVal || 7,
+      section: secVal || "A",
+    });
 
     return res.status(201).json({
-      message: `${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully!`,
+      message: "Student account created successfully!",
     });
   } catch (err) {
     console.error("Signup error:", err);

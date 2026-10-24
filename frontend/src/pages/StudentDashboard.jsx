@@ -1,151 +1,522 @@
-import React from "react";
-import { useNavigate } from "react-router-dom";
-import LogoutButton from "../components/LogoutButton";
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import api from "../api/axios";
+import { Icon } from "../components/Icons";
+import { CardSkeleton } from "../components/Skeleton";
 
 export default function StudentDashboard() {
-  const navigate = useNavigate();
+  const [profile, setProfile] = useState({
+    name: localStorage.getItem("username") || "Student",
+    username: localStorage.getItem("username") || "",
+    department: "",
+    className: "",
+  });
+  const [attendance, setAttendance] = useState(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
+  const [timetableData, setTimetableData] = useState(null);
+  const [loadingTimetable, setLoadingTimetable] = useState(true);
+
+  useEffect(() => {
+    const studentId = localStorage.getItem("studentId");
+    if (studentId) {
+      api.get(`/students/${studentId}`)
+        .then((res) => {
+          if (res.data) {
+            setProfile({
+              name: res.data.name || localStorage.getItem("username") || "Student",
+              username: res.data.username || localStorage.getItem("username") || "",
+              department: res.data.department || "",
+              className: res.data.className || "",
+            });
+          }
+        })
+        .catch(() => {});
+
+      api.get("/analytics/subject-attendance")
+        .then((res) => {
+          if (res.data) {
+            setAttendance(res.data);
+          }
+        })
+        .catch((err) => {
+          console.error("Attendance fetch error:", err);
+        })
+        .finally(() => {
+          setLoadingAttendance(false);
+        });
+
+      api.get("/timetable/my-timetable")
+        .then((res) => {
+          if (res.data) {
+            setTimetableData(res.data);
+          }
+        })
+        .catch((err) => {
+          console.error("Timetable fetch error:", err);
+        })
+        .finally(() => {
+          setLoadingTimetable(false);
+        });
+    } else {
+      setLoadingAttendance(false);
+      setLoadingTimetable(false);
+    }
+  }, []);
+
+  const todayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][
+    new Date().getDay()
+  ];
+  const todaySlots = (timetableData?.days?.[todayName] || []).sort(
+    (a, b) => a.periodNumber - b.periodNumber
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-8 relative overflow-hidden">
-
-      {/* 🌟 Animated Background Blobs - Premium Effect */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-      <div className="absolute top-0 right-0 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '2s' }}></div>
-      <div className="absolute bottom-0 left-20 w-96 h-96 bg-pink-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '4s' }}></div>
-      <div className="absolute bottom-20 right-20 w-80 h-80 bg-cyan-300 rounded-full mix-blend-multiply filter blur-3xl opacity-15 animate-pulse" style={{ animationDelay: '3s' }}></div>
-
-      <div className="relative z-10">
-
-        {/* Top Right Actions - Enhanced */}
-        <div className="flex justify-end items-center gap-4 mb-6">
-          <a
-            href="/change-password"
-            className="group relative overflow-hidden px-6 py-3 bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-600 hover:via-purple-600 hover:to-indigo-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-2xl transform transition-all duration-300 hover:scale-105"
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-            <span className="relative flex items-center gap-2">
-              <svg className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-              </svg>
-              Change Password
-            </span>
-          </a>
-          <LogoutButton />
-        </div>
-
-        {/* 💎 TOP BAR - Glassmorphism Enhanced */}
-        <div className="flex justify-between items-center mb-12 bg-white/90 backdrop-blur-lg rounded-3xl p-8 shadow-2xl border border-white/30 hover:shadow-3xl transition-all duration-300">
-          <div>
-            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2 animate-pulse">
-              Welcome Student 🎓
-            </h1>
-            <p className="text-gray-600 font-medium">Manage your academic journey</p>
-          </div>
-        </div>
-
-        {/* MAIN CONTENT CENTERED */}
-        <div className="flex flex-col items-center gap-8 max-w-4xl mx-auto">
-
-          {/* 🎯 Apply Leave Button - Premium */}
-          <button
-            onClick={() => navigate("/apply-leave")}
-            className="w-full max-w-xl group relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white px-10 py-6 rounded-3xl shadow-2xl hover:shadow-blue-500/50 transform hover:-translate-y-2 hover:scale-105 transition-all duration-500 font-bold text-lg"
-          >
-            {/* Animated gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            
-            {/* Shine effect */}
-            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -skew-x-12 group-hover:translate-x-full transition-transform duration-700"></div>
-            </div>
-
-            <span className="relative flex items-center justify-center gap-4">
-              <svg className="w-7 h-7 group-hover:scale-110 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Apply Leave
-              <svg className="w-6 h-6 group-hover:translate-x-2 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </span>
-          </button>
-
-          {/* 📊 Leave History Button - Dark Premium */}
-          <button
-            onClick={() => navigate("/leave-history")}
-            className="w-full max-w-xl group relative overflow-hidden bg-gradient-to-r from-slate-700 via-slate-800 to-gray-900 text-white px-10 py-6 rounded-3xl shadow-2xl hover:shadow-slate-500/50 transform hover:-translate-y-2 hover:scale-105 transition-all duration-500 font-bold text-lg"
-          >
-            {/* Animated gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-600 via-gray-700 to-slate-800 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-            
-            {/* Shine effect */}
-            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 group-hover:translate-x-full transition-transform duration-700"></div>
-            </div>
-
-            <span className="relative flex items-center justify-center gap-4">
-              <svg className="w-7 h-7 group-hover:scale-110 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              View Leave History
-              <svg className="w-6 h-6 group-hover:translate-x-2 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </span>
-          </button>
-
-          {/* 📅 Attendance Card - Ultra Premium */}
-          <div className="bg-gradient-to-br from-white/95 via-white/90 to-white/85 backdrop-blur-xl p-10 shadow-2xl rounded-3xl w-full max-w-xl mt-8 border border-white/50 hover:shadow-3xl hover:border-green-200/50 transition-all duration-500 transform hover:-translate-y-2 hover:scale-105">
-            
-            {/* Decorative gradient bar */}
-            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500 rounded-t-3xl"></div>
-
-            <div className="flex items-start gap-5 mb-8">
-              {/* 🎨 Icon Badge - Enhanced */}
-              <div className="relative group/icon">
-                <div className="absolute inset-0 bg-gradient-to-br from-green-400 to-emerald-500 rounded-3xl blur-lg opacity-50 group-hover/icon:opacity-75 transition-opacity duration-300"></div>
-                <div className="relative p-4 bg-gradient-to-br from-green-500 via-emerald-600 to-teal-600 rounded-3xl shadow-xl group-hover/icon:scale-110 transition-transform duration-300">
-                  <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-transparent p-4 sm:p-6 lg:p-8 transition-colors">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Profile / Greeting Banner */}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm border border-slate-200/80 dark:border-slate-700 relative overflow-hidden">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="flex items-center gap-4 sm:gap-5">
+              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-indigo-600 text-white font-bold text-2xl flex items-center justify-center shadow-md shadow-indigo-600/20 flex-shrink-0">
+                {profile.name.charAt(0).toUpperCase()}
               </div>
-
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent mb-3">
-                  View Attendance
-                </h2>
-                <p className="text-gray-600 leading-relaxed text-base">
-                  Check your monthly attendance with present/absent marking and track your academic progress effortlessly.
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                    Welcome, {profile.name}
+                  </h1>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800">
+                    Student Portal
+                  </span>
+                </div>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {profile.department ? `${profile.department} Department` : "Academic Services"}
+                  {profile.className ? ` • Section ${profile.className}` : ""}
+                  {profile.username ? ` • USN/ID: ${profile.username}` : ""}
                 </p>
               </div>
             </div>
 
-            {/* CTA Button */}
-            <button
-              onClick={() => navigate("/attendance")}
-              className="w-full group/btn relative overflow-hidden bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 text-white px-10 py-5 rounded-2xl shadow-xl hover:shadow-green-500/50 transform hover:-translate-y-1 hover:scale-105 transition-all duration-500 font-bold text-lg"
-            >
-              {/* Animated overlay */}
-              <div className="absolute inset-0 bg-gradient-to-r from-green-500 via-emerald-500 to-teal-500 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
-              
-              {/* Shine effect */}
-              <div className="absolute inset-0 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-700">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -skew-x-12 group-hover/btn:translate-x-full transition-transform duration-700"></div>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/profile"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white font-medium text-xs sm:text-sm transition bg-white dark:bg-slate-800 shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              >
+                <Icon name="user" className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>My Profile</span>
+              </Link>
+              <Link
+                to="/smart-leave-planner"
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs sm:text-sm transition shadow-sm flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              >
+                <Icon name="sparkles" className="w-4 h-4 text-indigo-100" />
+                <span>Smart Leave Planner</span>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Attendance Health Card */}
+        {loadingAttendance ? (
+          <CardSkeleton count={1} />
+        ) : attendance && (attendance.overall || attendance.summary) ? (() => {
+          const stats = attendance.overall || attendance.summary;
+          const pct = stats.percentage ?? stats.overallAttendancePercentage ?? 0;
+          const conducted = stats.totalConducted ?? 0;
+          const present = stats.present ?? stats.totalPresent ?? 0;
+          const absent = stats.absent ?? stats.totalAbsent ?? 0;
+          const onLeave = stats.onLeave ?? stats.totalOnLeave ?? 0;
+          const isSafe = pct >= 75;
+          const isWarning = pct >= 65 && pct < 75;
+
+          return (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-7 shadow-sm border border-slate-200/80 dark:border-slate-700 transition hover:shadow-md">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100 dark:border-slate-700">
+                <div className="flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center shadow-xs flex-shrink-0 ${
+                    isSafe
+                      ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800"
+                      : isWarning
+                      ? "bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800"
+                      : "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-800"
+                  }`}>
+                    <Icon
+                      name={isSafe ? "shield" : "alertTriangle"}
+                      className="w-7 h-7"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                        Overall Attendance Standing: {pct}%
+                      </h2>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
+                        isSafe
+                          ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                          : isWarning
+                          ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                          : "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800"
+                      }`}>
+                        {isSafe
+                          ? "Compliant (≥ 75%)"
+                          : isWarning
+                          ? "Warning (< 75%)"
+                          : "Critical Shortage"}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+                      {isSafe
+                        ? "Your attendance meets statutory institutional requirements. Keep attending to preserve safe margins."
+                        : "Your attendance is below the mandatory 75% threshold. Prioritize attending scheduled classes."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Link
+                    to="/attendance-analytics"
+                    className="px-3.5 py-2 bg-slate-50 dark:bg-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl text-xs sm:text-sm font-medium transition flex items-center gap-1.5"
+                  >
+                    <span>Subject Breakdown</span>
+                    <Icon name="chevronRight" className="w-4 h-4 text-slate-400 dark:text-slate-400" />
+                  </Link>
+                  <Link
+                    to="/smart-leave-planner"
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-medium shadow-sm transition flex items-center gap-1.5"
+                  >
+                    <Icon name="sparkles" className="w-4 h-4 text-indigo-200" />
+                    <span>Simulate Leaves</span>
+                  </Link>
+                </div>
               </div>
 
-              <span className="relative flex items-center justify-center gap-3">
-                <svg className="w-6 h-6 group-hover/btn:scale-110 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                View Attendance Calendar
-                <svg className="w-6 h-6 group-hover/btn:translate-x-2 transition-transform duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </span>
-            </button>
+              {/* Attendance Progress Bar & Summary Stats */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                  <span>Current Attendance Rate</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">Required Target: 75%</span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden relative">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      isSafe
+                        ? "bg-emerald-500"
+                        : isWarning
+                        ? "bg-amber-500"
+                        : "bg-rose-500"
+                    }`}
+                    style={{ width: `${Math.min(pct, 100)}%` }}
+                  ></div>
+                  {/* 75% Regulatory Guideline Marker */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-slate-800 dark:bg-slate-200 z-10 opacity-70"
+                    style={{ left: "75%" }}
+                    title="75% Regulatory Threshold"
+                  ></div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 text-center">
+                  <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 border border-slate-100 dark:border-slate-700">
+                    <span className="block text-xl font-bold text-slate-800 dark:text-white">{conducted}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Conducted</span>
+                  </div>
+                  <div className="bg-emerald-50/50 dark:bg-emerald-950/40 rounded-xl p-3 border border-emerald-100 dark:border-emerald-800/60">
+                    <span className="block text-xl font-bold text-emerald-700 dark:text-emerald-300">{present}</span>
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Present</span>
+                  </div>
+                  <div className="bg-rose-50/50 dark:bg-rose-950/40 rounded-xl p-3 border border-rose-100 dark:border-rose-800/60">
+                    <span className="block text-xl font-bold text-rose-700 dark:text-rose-300">{absent}</span>
+                    <span className="text-xs text-rose-600 dark:text-rose-400 font-medium">Absent</span>
+                  </div>
+                  <div className="bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl p-3 border border-indigo-100 dark:border-indigo-800/60">
+                    <span className="block text-xl font-bold text-indigo-700 dark:text-indigo-300">{onLeave}</span>
+                    <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Approved Leave (Excused)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })() : null}
+
+        {/* TODAY'S CLASS SCHEDULE WIDGET */}
+        {loadingTimetable ? (
+          <CardSkeleton count={1} />
+        ) : timetableData?.hasTimetable ? (
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-7 shadow-sm border border-slate-200/80 dark:border-slate-700 transition hover:shadow-md">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-700">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-800/60 flex-shrink-0">
+                  <Icon name="calendar" className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                      Today&rsquo;s Class Schedule • {todayName}
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                      {timetableData.timetable?.department || "CSE"} • Sem {timetableData.timetable?.semester || 7} &lsquo;{timetableData.timetable?.section || "A"}&rsquo;
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {todayName === "Sunday"
+                      ? "Sunday • Weekly College Closure"
+                      : todaySlots.length > 0
+                      ? `${todaySlots.length} sessions scheduled today • Academic Year ${timetableData.timetable?.academicYear || "2026-27"}`
+                      : "No classes scheduled for today"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <Link
+                  to="/my-timetable"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-semibold shadow-xs transition flex items-center gap-1.5"
+                >
+                  <Icon name="layoutGrid" className="w-4 h-4 text-indigo-200" />
+                  <span>Full Weekly Matrix</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Today's Period Cards / Timeline */}
+            {todayName === "Sunday" ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center mb-2">
+                  <Icon name="sun" className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Institutional Holiday (Sunday)</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Enjoy your weekend break! Regular lectures resume on Monday morning at 08:30 AM.
+                </p>
+              </div>
+            ) : todaySlots.length === 0 ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 mx-auto flex items-center justify-center mb-2">
+                  <Icon name="calendar" className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Classes Scheduled Today</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  You have a free day according to your section&rsquo;s official academic timetable.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 mt-5">
+                {todaySlots.map((slot, idx) => {
+                  const isLab = Boolean(slot.isLab);
+                  const isProj =
+                    (slot.subject?.code || slot.subjectCode || "").toUpperCase().startsWith("MP") ||
+                    (slot.subject?.name || slot.subjectName || "").toLowerCase().includes("project");
+
+                  return (
+                    <div
+                      key={slot.id || idx}
+                      className={`p-3.5 rounded-xl border transition-all shadow-2xs hover:shadow-xs flex flex-col justify-between ${
+                        isProj
+                          ? "bg-emerald-50/50 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-800/60"
+                          : isLab
+                          ? "bg-purple-50/50 dark:bg-purple-950/30 border-purple-200/80 dark:border-purple-800/60"
+                          : "bg-slate-50/70 dark:bg-slate-900/40 border-slate-200/80 dark:border-slate-700"
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1.5 mb-2">
+                          <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
+                            P{slot.periodNumber} • {slot.startTime || "08:30"} - {slot.endTime || "09:25"}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                              isProj
+                                ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                                : isLab
+                                ? "bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-300"
+                                : "bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-300"
+                            }`}
+                          >
+                            {isProj ? "Project" : isLab ? "Lab" : "Theory"}
+                          </span>
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-1">
+                          {slot.subject?.code || slot.subjectCode}: {slot.subject?.name || slot.subjectName}
+                        </h4>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-200/50 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
+                        <span className="truncate max-w-[120px]" title={slot.faculty?.name || slot.facultyName || "Faculty TBD"}>
+                          👤 {slot.faculty?.name || slot.facultyName || "Faculty TBD"}
+                        </span>
+                        <span className="font-semibold px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200">
+                          📍 {slot.room?.name || slot.roomName || "LH-101"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* Academic Hub - 6 Action Cards */}
+        <div>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Icon name="graduationCap" className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <span>Academic Services & Management</span>
+            </h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Direct Access</span>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* 1. My Academic Timetable */}
+            <Link
+              to="/my-timetable"
+              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all duration-200 flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 border border-indigo-100 dark:border-indigo-800/60 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <Icon name="calendar" className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    My Class Timetable
+                  </h3>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">Official</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                  View your complete weekly class schedule, lab sessions, assigned faculty, room locations, and print official PDF format.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                <span>View Schedule</span>
+                <Icon name="chevronRight" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* 2. Attendance Analytics */}
+            <Link
+              to="/attendance-analytics"
+              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all duration-200 flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 border border-indigo-100 dark:border-indigo-800/60 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <Icon name="trendingUp" className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    Attendance Analytics
+                  </h3>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">Metrics</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                  Track subject-wise attendance percentages, safe margin classes to skip, and shortage alerts measured against the 75% threshold.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                <span>View Analytics</span>
+                <Icon name="chevronRight" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* 3. Smart Leave Planner */}
+            <Link
+              to="/smart-leave-planner"
+              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-amber-500/50 transition-all duration-200 flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-4 border border-amber-100 dark:border-amber-800/60 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                  <Icon name="sparkles" className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                    Smart Leave Planner
+                  </h3>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/60">Predictive</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                  Simulate upcoming leave dates, discover affected subject periods, and see projected attendance before submitting an application.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs font-semibold text-amber-600 dark:text-amber-400">
+                <span>Launch Planner</span>
+                <Icon name="chevronRight" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* 4. Apply for Leave */}
+            <Link
+              to="/apply-leave"
+              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-500/50 transition-all duration-200 flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-800/60 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <Icon name="fileText" className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                    Apply for Leave
+                  </h3>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60">Request</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                  Submit formal leave applications with date range, leave classification, documented reason, and optional certificate attachments.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                <span>Submit Request</span>
+                <Icon name="chevronRight" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* 5. Leave History */}
+            <Link
+              to="/leave-history"
+              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 flex items-center justify-center mb-4 border border-slate-200 dark:border-slate-600 group-hover:bg-slate-700 group-hover:text-white transition-colors">
+                  <Icon name="clock" className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-colors">
+                    Leave History
+                  </h3>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600">Records</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                  Monitor status of previous leave submissions, review administrator approval/rejection notes, and inspect submitted documents.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <span>Check History</span>
+                <Icon name="chevronRight" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+
+            {/* 6. Attendance Calendar */}
+            <Link
+              to="/attendance"
+              className="group bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500/50 transition-all duration-200 flex flex-col justify-between"
+            >
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 border border-indigo-100 dark:border-indigo-800/60 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <Icon name="calendar" className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    Attendance Calendar
+                  </h3>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">Monthly</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                  Interactive month-by-month calendar view with daily present and absent markings, college holidays, and weekend indicators.
+                </p>
+              </div>
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                <span>Open Calendar</span>
+                <Icon name="chevronRight" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

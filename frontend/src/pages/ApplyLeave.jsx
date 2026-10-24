@@ -1,86 +1,109 @@
 import React, { useState } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import api from "../api/axios";
+import { Icon } from "../components/Icons";
+import PageHeader from "../components/PageHeader";
+import { useToast } from "../components/Toast";
 
 export default function ApplyLeave() {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [leaveType, setLeaveType] = useState("Casual Leave");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(location.state?.fromDate || "");
+  const [toDate, setToDate] = useState(location.state?.toDate || "");
   const [reason, setReason] = useState("");
+  const [file, setFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
 
     const token = localStorage.getItem("token");
-    const studentId = localStorage.getItem("studentId");
-
-    if (!token || !studentId) {
-      alert("Login required!");
+    if (!token) {
+      toast.error("Login session expired. Please log in first.");
+      setTimeout(() => navigate("/"), 1500);
       return;
     }
 
-    try {
-      const response = await api.post(
-        "/leave/apply",
-        {
-          studentId,
-          leaveType,
-          fromDate,
-          toDate,
-          reason,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+    if (!fromDate || !toDate) {
+      toast.warning("Please select both start and end dates.");
+      return;
+    }
 
-      console.log("Res =>", response.data);
-      alert("Leave Application Submitted Successfully!");
-      window.location.href = "/student";
+    if (new Date(fromDate) > new Date(toDate)) {
+      toast.warning("From date cannot be after To date.");
+      return;
+    }
+
+    if (!reason.trim()) {
+      toast.warning("Please provide a reason for the leave application.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append("leaveType", leaveType);
+      formData.append("fromDate", fromDate);
+      formData.append("toDate", toDate);
+      formData.append("reason", reason);
+      if (file) {
+        formData.append("file", file);
+      }
+
+      await api.post("/leave/apply", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      toast.success("Leave application submitted successfully!");
+      setTimeout(() => {
+        navigate("/leave-history");
+      }, 1000);
     } catch (err) {
       console.error("Error =>", err);
-      alert(err.response?.data?.message || "Submission Failed");
+      toast.error(err.response?.data?.message || "Submission failed. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 relative overflow-hidden">
-      
-      {/* Animated Background Blobs */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse"></div>
-      <div className="absolute top-0 right-0 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" style={{ animationDelay: '2s' }}></div>
-      <div className="absolute -bottom-20 left-1/2 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse" style={{ animationDelay: '4s' }}></div>
+    <div className="min-h-screen bg-slate-50 dark:bg-transparent p-4 sm:p-6 lg:p-8 transition-colors">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <PageHeader
+          title="Apply for Leave"
+          subtitle="Submit formal leave requests with classification, date range, and optional medical certificates."
+          icon="fileText"
+          breadcrumbs={[
+            { label: "Student Portal", to: "/student" },
+            { label: "Leave Application" },
+          ]}
+          actions={
+            <Link
+              to="/leave-history"
+              className="px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs sm:text-sm font-medium transition shadow-xs flex items-center gap-1.5"
+            >
+              <Icon name="clock" className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span>Leave History</span>
+            </Link>
+          }
+        />
 
-      <form
-        onSubmit={submit}
-        className="relative z-10 bg-white/90 backdrop-blur-xl shadow-2xl rounded-3xl p-10 w-full max-w-lg border border-white/20"
-      >
-        {/* Header Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
-            <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-        </div>
-
-        <h2 className="text-3xl font-bold text-center mb-2 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-          Apply for Leave
-        </h2>
-        <p className="text-center text-gray-500 mb-8">Submit your leave application</p>
-
-        {/* Leave Type */}
-        <div className="mb-5">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">Leave Type</label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-            </div>
+        <form
+          onSubmit={submit}
+          className="bg-white dark:bg-slate-800 rounded-2xl p-6 sm:p-8 shadow-xs border border-slate-200/80 dark:border-slate-700 space-y-5"
+        >
+          {/* Leave Type */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Leave Classification
+            </label>
             <select
-              className="w-full border-2 border-gray-200 pl-12 pr-10 py-3 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none bg-white/50 appearance-none cursor-pointer"
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-medium text-slate-800 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition cursor-pointer"
               value={leaveType}
               onChange={(e) => setLeaveType(e.target.value)}
             >
@@ -89,112 +112,93 @@ export default function ApplyLeave() {
               <option>Emergency Leave</option>
               <option>Earned Leave</option>
             </select>
-            <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
           </div>
-        </div>
 
-        {/* Date Range */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-          {/* From Date */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">From Date</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
+          {/* Date Range */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                From Date *
+              </label>
               <input
                 type="date"
-                className="w-full border-2 border-gray-200 pl-12 pr-4 py-3 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none bg-white/50"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-medium text-slate-800 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
+                required
               />
             </div>
-          </div>
 
-          {/* To Date */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">To Date</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                To Date *
+              </label>
               <input
                 type="date"
-                className="w-full border-2 border-gray-200 pl-12 pr-4 py-3 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none bg-white/50"
+                className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-medium text-slate-800 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
+                required
               />
             </div>
           </div>
-        </div>
 
-        {/* Reason */}
-        <div className="mb-6">
-          <label className="block text-sm font-semibold text-gray-700 mb-2">Reason for Leave</label>
-          <div className="relative">
-            <div className="absolute top-3 left-0 pl-4 pointer-events-none">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </div>
+          {/* Reason */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Reason for Leave *
+            </label>
             <textarea
-              className="w-full border-2 border-gray-200 pl-12 pr-4 py-3 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all outline-none bg-white/50 resize-none"
-              placeholder="Please explain your reason for leave..."
-              rows="5"
+              className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-medium text-slate-800 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition resize-none"
+              placeholder="State the purpose and circumstances requiring absence..."
+              rows="4"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
+              required
             ></textarea>
           </div>
-          <p className="text-xs text-gray-500 mt-2 ml-1">Provide detailed information about your leave request</p>
-        </div>
 
-        {/* Submit Button */}
-        <button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <span className="relative flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Submit Application
-            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </span>
-        </button>
-
-        {/* Back Link */}
-        <div className="text-center mt-6">
-          <a href="/student" className="text-sm text-gray-600 hover:text-gray-800 font-medium hover:underline transition-colors inline-flex items-center gap-1">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to Dashboard
-          </a>
-        </div>
-
-        {/* Info Box */}
-        <div className="mt-6 bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="text-sm font-semibold text-blue-900 mb-1">Application Guidelines</p>
-              <p className="text-xs text-blue-700 leading-relaxed">
-                Your leave application will be reviewed by the admin. Please ensure all information is accurate and complete.
-              </p>
+          {/* Document Upload */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Supporting Document / Certificate <span className="text-slate-400 font-normal">(Optional)</span>
+            </label>
+            <div className="border border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-900/30 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition">
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                onChange={(e) => setFile(e.target.files[0] || null)}
+                className="w-full text-xs text-slate-500 dark:text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-900/50 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/80 cursor-pointer"
+              />
+              {file && (
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-2 flex items-center gap-1">
+                  <Icon name="checkCircle" className="w-3.5 h-3.5" />
+                  <span>Selected: {file.name} ({(file.size / 1024).toFixed(1)} KB)</span>
+                </p>
+              )}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Accepted formats: PDF, DOCX, JPG, PNG (Max 5MB)</p>
             </div>
           </div>
-        </div>
-      </form>
+
+          {/* Actions */}
+          <div className="pt-2 flex items-center justify-between gap-3">
+            <Link
+              to="/student"
+              className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs sm:text-sm font-medium transition"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium text-xs sm:text-sm shadow-xs transition disabled:opacity-50 flex items-center gap-2"
+            >
+              <Icon name="checkCircle" className="w-4 h-4 text-indigo-200" />
+              <span>{submitting ? "Submitting Application..." : "Submit Application"}</span>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

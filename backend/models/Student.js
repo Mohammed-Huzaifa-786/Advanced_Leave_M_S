@@ -13,7 +13,17 @@ const Student = sequelize.define("Student", {
   },
   name: DataTypes.STRING,
   className: DataTypes.STRING,
-  department: DataTypes.STRING
+  department: DataTypes.STRING,
+  semester: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 7,
+  },
+  section: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: "A",
+  },
 });
 
 module.exports = Student;

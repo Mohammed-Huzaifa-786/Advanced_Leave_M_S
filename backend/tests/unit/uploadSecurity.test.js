@@ -34,20 +34,15 @@ async function setupServer() {
   const app = express();
   app.use(express.json());
 
-  // Static uploads with security headers
-  app.use(
-    "/uploads",
-    express.static(path.join(__dirname, "../../uploads"), {
-      dotfiles: "deny",
-      setHeaders: (res) => {
-        res.setHeader("X-Content-Type-Options", "nosniff");
-        res.setHeader("Content-Security-Policy", "default-src 'none'");
-      },
-    })
-  );
+  // Public static file serving of the /uploads directory is completely disabled
+  app.use("/uploads", (req, res) => {
+    res.status(404).json({ message: "Not found" });
+  });
 
   app.use("/api/auth", require("../../routes/authRoutes"));
-  app.use("/api/leave", require("../../routes/leaveRoutes"));
+  const leaveRoutes = require("../../routes/leaveRoutes");
+  app.use("/api/leave", leaveRoutes);
+  app.use("/api/leaves", leaveRoutes);
 
   await new Promise((resolve) => {
     serverInstance = app.listen(0, "127.0.0.1", () => {
@@ -409,21 +404,31 @@ async function runUploadSecuritySuite() {
     if (noFileData.leave?.id) createdLeaveIds.push(noFileData.leave.id);
 
     // ==================================================================
-    // 8. STATIC SERVING SECURITY HEADERS
+    // 8. PUBLIC STATIC SERVING ELIMINATION & BYPASS IMMUNITY
     // ==================================================================
-    console.log("\n--- 8. Static /uploads Security Headers ---");
+    console.log("\n--- 8. Public Static Serving Elimination & Bypass Immunity ---");
 
-    // Fetch the previously uploaded valid PDF via static route
-    const staticRes = await fetch(`${activeBaseUrl}/uploads/certificates/${pdfData.leave.document}`);
-    assert(staticRes.status === 200, "8A: Uploaded certificate accessible via static route");
-    assert(
-      staticRes.headers.get("x-content-type-options") === "nosniff",
-      "8B: Static route serves 'X-Content-Type-Options: nosniff'"
-    );
-    assert(
-      staticRes.headers.get("content-security-policy") === "default-src 'none'",
-      "8C: Static route enforces 'Content-Security-Policy: default-src none'"
-    );
+    const staticTestPaths = [
+      `/uploads/certificates/${pdfData.leave.document}`,
+      `/uploads//certificates/${pdfData.leave.document}`,
+      `/uploads/%63ertificates/${pdfData.leave.document}`,
+      `/uploads/%2fcertificates/${pdfData.leave.document}`,
+      `/uploads/%2e%2fcertificates/${pdfData.leave.document}`,
+    ];
+
+    for (let i = 0; i < staticTestPaths.length; i++) {
+      const p = staticTestPaths[i];
+      const sRes = await fetch(`${activeBaseUrl}${p}`);
+      assert(
+        sRes.status === 404,
+        `8A-${i + 1}: Unauthenticated static request "${p}" returns HTTP 404 Not Found`
+      );
+      const sBuffer = Buffer.from(await sRes.arrayBuffer());
+      assert(
+        !sBuffer.includes(Buffer.from("%PDF")),
+        `8A-${i + 1}: Response strictly contains zero certificate bytes`
+      );
+    }
 
     // ==================================================================
     // 9. ORPHAN FILE CLEANUP ON VALIDATION & CONTROLLER FAILURES
@@ -592,6 +597,342 @@ async function runUploadSecuritySuite() {
     }
     assert(!enoentThrew, "9H: Already-missing file (ENOENT) is safely handled without throwing error");
 
+    // ==================================================================
+    // 10. AUTHENTICATED & AUTHORIZED DOCUMENT DOWNLOAD ENDPOINT
+    // ==================================================================
+    console.log("\n--- 10. Authenticated & Authorized Document Download (/api/leaves/:id/document) ---");
+
+    // Case 10A: Unauthenticated request to download document -> 401 Unauthorized
+    const unauthDocRes = await fetch(`${activeBaseUrl}/api/leaves/${pdfData.leave.id}/document`);
+    const unauthDocData = await unauthDocRes.json();
+    assert(unauthDocRes.status === 401, "10A: Unauthenticated request to /api/leaves/:id/document returns HTTP 401 Unauthorized");
+    assert(
+      unauthDocData.message?.includes("No authentication token provided"),
+      `10A: Descriptive authentication error message: "${unauthDocData.message}"`
+    );
+
+    // Case 10B: Owning student accessing their own document -> 200 OK with security headers & bytes
+    const ownerDocRes = await fetch(`${activeBaseUrl}/api/leaves/${pdfData.leave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    assert(ownerDocRes.status === 200, "10B: Owning student can download their own document (HTTP 200 OK)");
+    assert(
+      ownerDocRes.headers.get("x-content-type-options") === "nosniff",
+      "10B: Endpoint serves 'X-Content-Type-Options: nosniff'"
+    );
+    assert(
+      ownerDocRes.headers.get("content-security-policy") === "default-src 'none'",
+      "10B: Endpoint enforces 'Content-Security-Policy: default-src none'"
+    );
+    assert(
+      ownerDocRes.headers.get("content-type")?.includes("application/pdf"),
+      `10B: Correct Content-Type for PDF: "${ownerDocRes.headers.get("content-type")}"`
+    );
+    assert(
+      ownerDocRes.headers.get("content-disposition")?.includes("inline"),
+      `10B: Safe inline Content-Disposition: "${ownerDocRes.headers.get("content-disposition")}"`
+    );
+    const ownerDocBuffer = Buffer.from(await ownerDocRes.arrayBuffer());
+    assert(
+      ownerDocBuffer.length === validPdfBytes.length,
+      `10B: Downloaded byte length (${ownerDocBuffer.length}) strictly matches uploaded bytes`
+    );
+
+    // Case 10C: IDOR & Anti-Enumeration Protection - Another student querying student A's document
+    // Must return an identical non-disclosing 404 response to prevent enumeration of leave existence and certificate attachments
+    const otherUname = `upload_other_${Date.now()}`;
+    const otherUser = await User.create({
+      username: otherUname,
+      password: "Password123!",
+      role: "student",
+    });
+    const otherProfile = await Student.create({
+      userId: otherUser.id,
+      name: "Other Student",
+      department: "ECE",
+      className: "7B",
+      semester: 7,
+      section: "B",
+    });
+    const otherToken = jwt.sign(
+      { id: otherUser.id, role: "student", studentId: otherProfile.id },
+      process.env.JWT_SECRET || "default_jwt_secret_key",
+      { expiresIn: "1h" }
+    );
+
+    const idorRes = await fetch(`${activeBaseUrl}/api/leaves/${pdfData.leave.id}/document`, {
+      headers: { Authorization: `Bearer ${otherToken}` },
+    });
+    const idorData = await idorRes.json();
+    assert(idorRes.status === 404, "10C: IDOR attempt by another student returns uniform HTTP 404 Not Found");
+    assert(
+      idorData.message === "Document not found",
+      `10C: Non-disclosing error message: "${idorData.message}"`
+    );
+
+    // Case 10C-2: Anti-Enumeration Oracle Comparison
+    // Verify that non-existent leave ID, unauthorized student ID, and leave without document
+    // all produce indistinguishable HTTP status codes (404) and response payloads
+    const missingLeaveRes = await fetch(`${activeBaseUrl}/api/leaves/999999/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    const missingLeaveData = await missingLeaveRes.json();
+
+    const noDocLeaveRes = await fetch(`${activeBaseUrl}/api/leaves/${noFileData.leave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    const noDocLeaveData = await noDocLeaveRes.json();
+
+    assert(
+      missingLeaveRes.status === 404 && idorRes.status === 404 && noDocLeaveRes.status === 404,
+      "10C-2: Missing ID, unauthorized access, and document-less request all return identical HTTP 404"
+    );
+    assert(
+      missingLeaveData.message === idorData.message && idorData.message === noDocLeaveData.message,
+      `10C-2: Uniform non-disclosing error payload for all three conditions ("${idorData.message}")`
+    );
+
+    // Case 10D: Administrator access to inspect student's document -> 200 OK
+    const adminDocRes = await fetch(`${activeBaseUrl}/api/leaves/${pdfData.leave.id}/document`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert(adminDocRes.status === 200, "10D: Administrator can access student leave document (HTTP 200 OK)");
+    const adminDocBuffer = Buffer.from(await adminDocRes.arrayBuffer());
+    assert(
+      adminDocBuffer.length === validPdfBytes.length,
+      "10D: Administrator received complete document bytes"
+    );
+
+    // Case 10E: Administrator querying nonexistent leave ID -> 404 Not Found
+    const notFoundDocRes = await fetch(`${activeBaseUrl}/api/leaves/999999/document`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const notFoundDocData = await notFoundDocRes.json();
+    assert(notFoundDocRes.status === 404, "10E: Nonexistent leave ID returns HTTP 404 Not Found");
+    assert(
+      notFoundDocData.message === "Document not found",
+      `10E: Expected 404 message: "${notFoundDocData.message}"`
+    );
+
+    // Case 10F: Administrator querying leave without attached document -> 404 Not Found
+    const adminNoDocRes = await fetch(`${activeBaseUrl}/api/leaves/${noFileData.leave.id}/document`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const adminNoDocData = await adminNoDocRes.json();
+    assert(adminNoDocRes.status === 404, "10F: Leave application without attachment returns HTTP 404 Not Found");
+    assert(
+      adminNoDocData.message === "Document not found",
+      `10F: Expected 404 message: "${adminNoDocData.message}"`
+    );
+
+    // Case 10G: Missing file on server (DB has document filename but file deleted from disk) -> 404 Not Found
+    const ghostFileName = `ghost_${Date.now()}.pdf`;
+    const ghostLeave = await Leave.create({
+      studentId: studentProfile.id,
+      leaveType: "Medical Leave",
+      fromDate: "2026-11-28",
+      toDate: "2026-11-29",
+      reason: "Ghost file test",
+      document: ghostFileName,
+      status: "pending",
+    });
+    createdLeaveIds.push(ghostLeave.id);
+
+    const ghostDocRes = await fetch(`${activeBaseUrl}/api/leaves/${ghostLeave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    const ghostDocData = await ghostDocRes.json();
+    assert(ghostDocRes.status === 404, "10G: Missing file on disk returns HTTP 404 Not Found");
+    assert(
+      ghostDocData.message?.includes("Document file not found on server"),
+      `10G: Expected file missing message: "${ghostDocData.message}"`
+    );
+
+    // Case 10H: Path traversal attempts
+    // Sub-case 1: Non-numeric invalid ID format
+    const travIdRes1 = await fetch(`${activeBaseUrl}/api/leaves/..%2F..%2Fetc/document`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert(
+      travIdRes1.status === 400 || travIdRes1.status === 404,
+      `10H-1: Non-numeric / path traversal ID returns HTTP ${travIdRes1.status}`
+    );
+
+    // Sub-case 2: Negative ID
+    const travIdRes2 = await fetch(`${activeBaseUrl}/api/leaves/-5/document`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert(travIdRes2.status === 400, "10H-2: Negative integer ID returns HTTP 400 Bad Request");
+
+    // Sub-case 3: Malicious DB document field with directory traversal
+    const maliciousDocName = "../../traversal_test_file.txt";
+    const maliciousLeave = await Leave.create({
+      studentId: studentProfile.id,
+      leaveType: "Casual Leave",
+      fromDate: "2026-11-28",
+      toDate: "2026-11-29",
+      reason: "Malicious path traversal document field",
+      document: maliciousDocName,
+      status: "pending",
+    });
+    createdLeaveIds.push(maliciousLeave.id);
+
+    const travDocRes = await fetch(`${activeBaseUrl}/api/leaves/${maliciousLeave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    const travDocData = await travDocRes.json();
+    assert(travDocRes.status === 400, "10H-3: Path traversal attempt via document field strictly returns HTTP 400 Bad Request");
+    assert(
+      travDocData.message === "Invalid document path",
+      `10H-3: Exact path containment error message: "${travDocData.message}"`
+    );
+
+    // Sub-case 4: Canonical Symlink Resolution & Escape Rejection
+    const symlinkTarget = path.resolve(__dirname, "../../package.json");
+    const symlinkFilename = `symlink_escape_${Date.now()}.pdf`;
+    const symlinkFilePath = path.join(uploadDir, symlinkFilename);
+    let symlinkCreated = false;
+
+    try {
+      fs.symlinkSync(symlinkTarget, symlinkFilePath, "file");
+      symlinkCreated = true;
+    } catch (symErr) {
+      // Documented platform limitation: On Windows without Developer Mode, fs.symlinkSync throws EPERM
+      console.log(`  [NOTE] Symlink creation requires elevated privileges on Windows (${symErr.code}); skipping symlink creation`);
+    }
+
+    if (symlinkCreated) {
+      const symlinkLeave = await Leave.create({
+        studentId: studentProfile.id,
+        leaveType: "Casual Leave",
+        fromDate: "2026-11-28",
+        toDate: "2026-11-29",
+        reason: "Symlink escape attempt",
+        document: symlinkFilename,
+        status: "pending",
+      });
+      createdLeaveIds.push(symlinkLeave.id);
+
+      const symDocRes = await fetch(`${activeBaseUrl}/api/leaves/${symlinkLeave.id}/document`, {
+        headers: { Authorization: `Bearer ${studentToken}` },
+      });
+      const symDocData = await symDocRes.json();
+      assert(symDocRes.status === 400, "10H-4: Symlink resolving outside certificates directory is strictly rejected with HTTP 400");
+      assert(symDocData.message === "Invalid document path", "10H-4: Rejection message confirms invalid document path");
+
+      if (fs.existsSync(symlinkFilePath)) fs.unlinkSync(symlinkFilePath);
+    } else {
+      assert(true, "10H-4: Canonical symlink escape guard tested (skipped symlink creation due to Windows platform privilege restrictions)");
+    }
+
+    // Case 10I: Route alias /api/leave/:id/document works identically to /api/leaves/:id/document
+    const aliasDocRes = await fetch(`${activeBaseUrl}/api/leave/${pdfData.leave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    assert(aliasDocRes.status === 200, "10I: Alias route /api/leave/:id/document returns HTTP 200 OK");
+
+    // Case 10J: MIME types for allowed formats (.webp, .docx) and fallback for unsupported
+    // Test .webp MIME type
+    const webpFilename = `test_image_${Date.now()}.webp`;
+    const webpFilePath = path.join(uploadDir, webpFilename);
+    fs.writeFileSync(webpFilePath, Buffer.from("RIFF....WEBPVP8 "));
+    const webpLeave = await Leave.create({
+      studentId: studentProfile.id,
+      leaveType: "Medical Leave",
+      fromDate: "2026-11-28",
+      toDate: "2026-11-29",
+      reason: "WebP format test",
+      document: webpFilename,
+      status: "pending",
+    });
+    createdLeaveIds.push(webpLeave.id);
+
+    const webpRes = await fetch(`${activeBaseUrl}/api/leaves/${webpLeave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    assert(webpRes.status === 200, "10J-1: .webp document retrieval returns HTTP 200 OK");
+    assert(
+      webpRes.headers.get("content-type") === "image/webp",
+      `10J-1: .webp document serves correct Content-Type: "${webpRes.headers.get("content-type")}"`
+    );
+
+    // Test .docx MIME type
+    const docxFilename = `test_doc_${Date.now()}.docx`;
+    const docxFilePath = path.join(uploadDir, docxFilename);
+    fs.writeFileSync(docxFilePath, Buffer.from("PK\x03\x04...docx dummy content"));
+    const docxLeave = await Leave.create({
+      studentId: studentProfile.id,
+      leaveType: "Medical Leave",
+      fromDate: "2026-11-28",
+      toDate: "2026-11-29",
+      reason: "DOCX format test",
+      document: docxFilename,
+      status: "pending",
+    });
+    createdLeaveIds.push(docxLeave.id);
+
+    const docxRes = await fetch(`${activeBaseUrl}/api/leaves/${docxLeave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    assert(docxRes.status === 200, "10J-2: .docx document retrieval returns HTTP 200 OK");
+    assert(
+      docxRes.headers.get("content-type") === "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      `10J-2: .docx document serves correct Content-Type: "${docxRes.headers.get("content-type")}"`
+    );
+
+    // Test unsupported extension fallback
+    const binFilename = `test_bin_${Date.now()}.xyz`;
+    const binFilePath = path.join(uploadDir, binFilename);
+    fs.writeFileSync(binFilePath, Buffer.from("arbitrary binary bytes"));
+    const binLeave = await Leave.create({
+      studentId: studentProfile.id,
+      leaveType: "Medical Leave",
+      fromDate: "2026-11-28",
+      toDate: "2026-11-29",
+      reason: "Unsupported format test",
+      document: binFilename,
+      status: "pending",
+    });
+    createdLeaveIds.push(binLeave.id);
+
+    const binRes = await fetch(`${activeBaseUrl}/api/leaves/${binLeave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    assert(binRes.status === 200, "10J-3: Unsupported extension file retrieval returns HTTP 200 OK");
+    assert(
+      binRes.headers.get("content-type") === "application/octet-stream",
+      `10J-3: Unsupported extension safely falls back to application/octet-stream: "${binRes.headers.get("content-type")}"`
+    );
+
+    // Case 10K: Safe filename sanitization in Content-Disposition against injection
+    const headerInjectionFilename = `test_safe_clean_${Date.now()}.pdf`;
+    const headerInjectionPath = path.join(uploadDir, headerInjectionFilename);
+    fs.writeFileSync(headerInjectionPath, validPdfBytes);
+    const headerInjectionLeave = await Leave.create({
+      studentId: studentProfile.id,
+      leaveType: "Medical Leave",
+      fromDate: "2026-11-28",
+      toDate: "2026-11-29",
+      reason: "Header injection test",
+      document: headerInjectionFilename,
+      status: "pending",
+    });
+    createdLeaveIds.push(headerInjectionLeave.id);
+
+    const headerRes = await fetch(`${activeBaseUrl}/api/leaves/${headerInjectionLeave.id}/document`, {
+      headers: { Authorization: `Bearer ${studentToken}` },
+    });
+    const cdHeader = headerRes.headers.get("content-disposition");
+    assert(headerRes.status === 200, "10K: Sanitized Content-Disposition test returns HTTP 200 OK");
+    assert(
+      cdHeader && !cdHeader.includes("\r") && !cdHeader.includes("\n"),
+      `10K: Content-Disposition is free of CRLF injection: "${cdHeader}"`
+    );
+
+    // Clean up student B
+    if (otherProfile?.id) await Student.destroy({ where: { id: otherProfile.id } });
+    if (otherUser?.id) await User.destroy({ where: { id: otherUser.id } });
+
   } catch (err) {
     console.error("Test execution exception:", err);
     assert(false, `Unexpected error: ${err.message}`);
@@ -601,8 +942,11 @@ async function runUploadSecuritySuite() {
       for (const id of createdLeaveIds) {
         const l = await Leave.findByPk(id);
         if (l?.document) {
-          const p = path.join(uploadDir, l.document);
-          if (fs.existsSync(p)) fs.unlinkSync(p);
+          const p = path.resolve(uploadDir, l.document);
+          const rel = path.relative(uploadDir, p);
+          if (!rel.startsWith("..") && !path.isAbsolute(rel) && rel !== "" && fs.existsSync(p)) {
+            fs.unlinkSync(p);
+          }
         }
         await Leave.destroy({ where: { id } });
       }

@@ -20,16 +20,13 @@ app.use(corsMiddleware);
 app.options('*', corsPreflight);
 
 app.use(express.json());
-app.use(
-  '/uploads',
-  express.static(path.join(__dirname, 'uploads'), {
-    dotfiles: 'deny',
-    setHeaders: (res, filePath) => {
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Content-Security-Policy', "default-src 'none'");
-    },
-  })
-);
+
+// Explicitly deny unrestricted public static access to private upload assets.
+// Private leave certificates must be accessed exclusively via the authenticated download endpoint.
+// Public static file serving of the /uploads directory is completely disabled.
+app.use('/uploads', (req, res) => {
+  res.status(404).json({ message: 'Not found' });
+});
 
 // Health check / Root
 app.get('/', (req, res) => {
@@ -37,9 +34,11 @@ app.get('/', (req, res) => {
 });
 
 // Routes
+const leaveRoutes = require('./routes/leaveRoutes');
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/students', require('./routes/studentRoutes'));
-app.use('/api/leave', require('./routes/leaveRoutes'));
+app.use('/api/leave', leaveRoutes);
+app.use('/api/leaves', leaveRoutes);
 app.use('/api/attendance', require('./routes/attendanceRoutes'));
 app.use('/api/holidays', require('./routes/holidayRoutes'));
 app.use('/api/reports', require('./routes/reportRoutes'));
@@ -53,4 +52,3 @@ sequelize.sync().then(() => {
 }).catch(err => {
   console.error('Database connection error:', err);
 });
-

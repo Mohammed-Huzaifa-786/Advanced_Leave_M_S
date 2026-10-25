@@ -135,7 +135,7 @@ exports.getAllLeaves = async (req, res) => {
       toDate: l.toDate,
       reason: l.reason,
       document: l.document,
-      documentUrl: l.document ? `/uploads/certificates/${l.document}` : null,
+      documentUrl: l.document ? `/api/leaves/${l.id}/document` : null,
       status: l.status,
       createdAt: l.createdAt,
     }));
@@ -174,7 +174,7 @@ exports.getMyLeaves = async (req, res) => {
       toDate: l.toDate,
       reason: l.reason,
       document: l.document,
-      documentUrl: l.document ? `/uploads/certificates/${l.document}` : null,
+      documentUrl: l.document ? `/api/leaves/${l.id}/document` : null,
       status: l.status,
       createdAt: l.createdAt,
     }));
@@ -311,4 +311,124 @@ exports.rejectLeave = async (req, res) => {
     return res.status(500).json({ message: "Failed to reject leave" });
   }
 };
+// Download attached leave document with authorization, anti-enumeration, and strict canonical path validation
+exports.downloadDocument = async (req, res) => {
+  try {
+    const rawId = req.params.id;
+    const leaveId = parseInt(rawId, 10);
+    if (!rawId || isNaN(leaveId) || String(leaveId) !== String(rawId).trim() || leaveId <= 0) {
+      return res.status(400).json({ message: "Invalid leave ID" });
+    }
 
+    let leave;
+
+    // Role-based authorization & Anti-Enumeration Protection:
+    // 1. Admin: Can access documents across the entire institution.
+    // 2. Student: Authorized strictly for own leaves. Missing leave, leave without document,
+    //    or unauthorized leave all return an identical, non-disclosing 404 response.
+    if (req.user.role === "admin") {
+      leave = await Leave.findByPk(leaveId);
+      if (!leave || !leave.document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+    } else if (req.user.role === "student") {
+      let studentId = req.user.studentId;
+      if (!studentId) {
+        const student = await Student.findOne({ where: { userId: req.user.id } });
+        if (student) studentId = student.id;
+      }
+      if (!studentId) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      leave = await Leave.findByPk(leaveId);
+      // Uniform 404: Non-existent leave, leave without document, or another student's leave
+      if (!leave || !leave.document || leave.studentId !== studentId) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+    } else {
+      return res.status(403).json({ message: "Access denied." });
+    }
+
+    // Canonical path resolution & anti-traversal / anti-symlink containment
+    const uploadDir = path.resolve(__dirname, "..", "uploads", "certificates");
+    let canonicalUploadDir;
+    try {
+      canonicalUploadDir = fs.realpathSync(uploadDir);
+    } catch (dirErr) {
+      console.error("Failed to resolve certificates directory:", dirErr.message);
+      return res.status(500).json({ message: "Server storage error" });
+    }
+
+    if (typeof leave.document !== "string" || !leave.document.trim()) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    // Lexical path check
+    const resolvedPath = path.resolve(canonicalUploadDir, leave.document);
+    const lexicalRel = path.relative(canonicalUploadDir, resolvedPath);
+    if (lexicalRel.startsWith("..") || path.isAbsolute(lexicalRel) || lexicalRel === "") {
+      return res.status(400).json({ message: "Invalid document path" });
+    }
+
+    // Canonical realpath check to resolve and reject symlink escapes
+    let canonicalFilePath;
+    try {
+      canonicalFilePath = fs.realpathSync(resolvedPath);
+    } catch (fsErr) {
+      if (fsErr.code === "ENOENT") {
+        return res.status(404).json({ message: "Document file not found on server" });
+      }
+      console.error("Filesystem error resolving document path:", fsErr.message);
+      return res.status(500).json({ message: "Failed to access document file" });
+    }
+
+    // Canonical containment verification
+    const canonicalRel = path.relative(canonicalUploadDir, canonicalFilePath);
+    if (canonicalRel.startsWith("..") || path.isAbsolute(canonicalRel) || canonicalRel === "") {
+      return res.status(400).json({ message: "Invalid document path" });
+    }
+
+    // Verify canonical target is a regular file
+    try {
+      const stat = fs.statSync(canonicalFilePath);
+      if (!stat.isFile()) {
+        return res.status(400).json({ message: "Invalid document target" });
+      }
+    } catch (statErr) {
+      return res.status(404).json({ message: "Document file not found on server" });
+    }
+
+    // Security headers to prevent MIME confusion and inline script execution
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'");
+
+    // Determine content type based on extension matching the upload allowlist
+    const ext = path.extname(canonicalFilePath).toLowerCase();
+    const mimeTypes = {
+      ".pdf": "application/pdf",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".webp": "image/webp",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".doc": "application/msword",
+    };
+    const contentType = mimeTypes[ext] || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
+
+    // Sanitize filename against quotes, backslashes, semicolons, and CRLF header injection
+    const rawFilename = path.basename(canonicalFilePath);
+    const safeFilename = rawFilename
+      .replace(/[\r\n]/g, "")
+      .replace(/["\\;]/g, "_")
+      .replace(/[^\x20-\x7E]/g, "_");
+
+    res.setHeader("Content-Disposition", `inline; filename="${safeFilename}"`);
+
+    return res.sendFile(canonicalFilePath, { dotfiles: "deny" });
+  } catch (error) {
+    console.error("Download document error:", error);
+    return res.status(500).json({ message: "Failed to retrieve document" });
+  }
+};

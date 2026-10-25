@@ -56,6 +56,37 @@ export default function ApproveLeave() {
     }
   };
 
+  const [downloadingId, setDownloadingId] = useState(null);
+
+  const handleViewDocument = async (leaveId, filename) => {
+    try {
+      setDownloadingId(leaveId);
+      const res = await api.get(`/leaves/${leaveId}/document`, {
+        responseType: "blob",
+      });
+      const contentType = res.headers["content-type"] || "application/pdf";
+      const blob = new Blob([res.data], { type: contentType });
+      const fileUrl = window.URL.createObjectURL(blob);
+      const newTab = window.open(fileUrl, "_blank", "noopener,noreferrer");
+      if (!newTab || newTab.closed || typeof newTab.closed === "undefined") {
+        const link = document.createElement("a");
+        link.href = fileUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        if (filename) link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      setTimeout(() => window.URL.revokeObjectURL(fileUrl), 60000);
+    } catch (err) {
+      console.error("Failed to view document:", err);
+      toast.error(err.response?.data?.message || "Failed to load attached document");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const filteredLeaves = leaves.filter((l) => {
     if (filter === "all") return true;
     return l.status === filter;
@@ -218,15 +249,15 @@ export default function ApproveLeave() {
                       <Icon name="fileText" className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                       <span>Supporting Certificate Attached</span>
                     </span>
-                    <a
-                      href={l.documentUrl || `/uploads/certificates/${l.document}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() => handleViewDocument(l.id, l.document)}
+                      disabled={downloadingId === l.id}
+                      className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
-                      <span>Inspect Attachment</span>
+                      <span>{downloadingId === l.id ? "Loading..." : "Inspect Attachment"}</span>
                       <Icon name="externalLink" className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   </div>
                 )}
 

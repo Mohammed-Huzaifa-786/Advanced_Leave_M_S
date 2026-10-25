@@ -1,7 +1,47 @@
+const path = require("path");
+const fs = require("fs");
 const { Leave, Student, User, Attendance } = require("../models");
+
+// Safely clean up an uploaded file if leave application fails
+const cleanupUploadedFile = async (file) => {
+  if (!file || !file.path) return;
+  try {
+    const uploadDir = path.resolve(__dirname, "..", "uploads", "certificates");
+    const filePath = path.resolve(file.path);
+
+    // Robust path containment check using path.relative()
+    const rel = path.relative(uploadDir, filePath);
+    if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+      return;
+    }
+
+    // Safety guard: do not delete if file is already linked to an existing leave
+    // Fail-safe: if the DB query fails, abort deletion
+    if (file.filename) {
+      try {
+        const existing = await Leave.findOne({ where: { document: file.filename } });
+        if (existing) return;
+      } catch (dbErr) {
+        console.error("Failed to verify database reference for upload cleanup; aborting deletion:", dbErr.message);
+        return;
+      }
+    }
+
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (unlinkErr) {
+      if (unlinkErr.code !== "ENOENT") {
+        console.error("Error unlinking uploaded file:", unlinkErr.message);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to clean up uploaded file:", err.message);
+  }
+};
 
 // Apply for leave (Students only - uses token's studentId, saves document attachment)
 exports.applyLeave = async (req, res) => {
+  let leaveCreated = false;
   try {
     const { leaveType, fromDate, toDate, reason } = req.body;
 
@@ -17,14 +57,17 @@ exports.applyLeave = async (req, res) => {
     }
 
     if (!studentId) {
+      await cleanupUploadedFile(req.file);
       return res.status(403).json({ message: "Only registered students can apply for leave" });
     }
 
     if (!leaveType || !fromDate || !toDate || !reason) {
+      await cleanupUploadedFile(req.file);
       return res.status(400).json({ message: "Leave type, from date, to date, and reason are required" });
     }
 
     if (new Date(fromDate) > new Date(toDate)) {
+      await cleanupUploadedFile(req.file);
       return res.status(400).json({ message: "From date cannot be later than to date" });
     }
 
@@ -40,16 +83,23 @@ exports.applyLeave = async (req, res) => {
       status: "pending",
     });
 
+    leaveCreated = true;
+
     return res.status(201).json({
       success: true,
       message: "Leave application submitted successfully",
       leave,
     });
   } catch (error) {
+    if (!leaveCreated) {
+      await cleanupUploadedFile(req.file);
+    }
     console.error("Leave apply error:", error);
     return res.status(500).json({ message: "Failed to submit leave application" });
   }
 };
+
+exports.cleanupUploadedFile = cleanupUploadedFile;
 
 // Get all leaves (Admin only - includes student and user details)
 exports.getAllLeaves = async (req, res) => {

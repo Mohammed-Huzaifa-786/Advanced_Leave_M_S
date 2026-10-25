@@ -10,6 +10,7 @@
     "test:optimization": "node tests/unit/timetableOptimization.test.js",
     "test:attendance": "node tests/unit/attendanceAnalytics.test.js",
     "test:security": "node tests/unit/loginSecurity.test.js",
+    "test:upload": "node tests/unit/uploadSecurity.test.js",
     "test:auth": "node tests/integration/authComprehensive.test.js",
     "test:features": "node tests/integration/featuresAndWorkflows.test.js",
     "test:seeder": "node tests/integration/seederIntegrity.test.js",

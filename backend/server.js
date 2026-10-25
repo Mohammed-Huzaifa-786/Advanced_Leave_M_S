@@ -31,7 +31,16 @@ app.use(
 app.options('*', cors({ origin: true, credentials: true }));
 
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'uploads'), {
+    dotfiles: 'deny',
+    setHeaders: (res, filePath) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'");
+    },
+  })
+);
 
 // Health check / Root
 app.get('/', (req, res) => {

@@ -1,6 +1,5 @@
 const express = require('express');
 const app = express();
-const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
@@ -14,21 +13,11 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// CORS configuration & Private Network Access support (Chrome PNA)
-app.use((req, res, next) => {
-  if (req.headers['access-control-request-private-network']) {
-    res.setHeader('Access-Control-Allow-Private-Network', 'true');
-  }
-  next();
-});
-
-app.use(
-  cors({
-    origin: true, // Dynamically reflect request origin for full cross-origin & local development support
-    credentials: true,
-  })
-);
-app.options('*', cors({ origin: true, credentials: true }));
+// Hardened CORS configuration & Private Network Access support
+const { corsMiddleware, corsPreflight, privateNetworkAccess } = require('./config/cors');
+app.use(privateNetworkAccess);
+app.use(corsMiddleware);
+app.options('*', corsPreflight);
 
 app.use(express.json());
 app.use(

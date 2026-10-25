@@ -4,7 +4,7 @@ import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import EmptyState from "../components/EmptyState";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function Reports() {
   const { toast } = useToast();
@@ -15,27 +15,27 @@ export default function Reports() {
   const [summary, setSummary] = useState({ present: 0, absent: 0, onLeave: 0 });
 
   useEffect(() => {
+    async function loadStudents() {
+      try {
+        const res = await api.get("/students/all");
+        setStudents(res.data || []);
+      } catch {
+        toast.error("Cannot load students data");
+      }
+    }
+
+    async function loadLeaves() {
+      try {
+        const res = await api.get("/leave/all");
+        setLeaves(res.data || []);
+      } catch {
+        toast.error("Cannot load leave applications data");
+      }
+    }
+
     loadStudents();
     loadLeaves();
-  }, []);
-
-  async function loadStudents() {
-    try {
-      const res = await api.get("/students/all");
-      setStudents(res.data || []);
-    } catch (err) {
-      toast.error("Cannot load students data");
-    }
-  }
-
-  async function loadLeaves() {
-    try {
-      const res = await api.get("/leave/all");
-      setLeaves(res.data || []);
-    } catch (err) {
-      toast.error("Cannot load leave applications data");
-    }
-  }
+  }, [toast]);
 
   async function loadAttendanceForStudent(studentId) {
     try {
@@ -51,7 +51,7 @@ export default function Reports() {
         absent: absentCount,
         onLeave: onLeaveCount,
       });
-    } catch (err) {
+    } catch {
       toast.error("Cannot load attendance data for student");
     }
   }

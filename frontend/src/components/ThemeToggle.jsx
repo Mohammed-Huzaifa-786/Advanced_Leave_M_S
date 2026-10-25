@@ -1,5 +1,5 @@
 import React from "react";
-import { useTheme } from "../context/ThemeContext";
+import { useTheme } from "../context/useTheme";
 import Icon from "./Icons";
 
 export default function ThemeToggle({ className = "", showLabel = false }) {

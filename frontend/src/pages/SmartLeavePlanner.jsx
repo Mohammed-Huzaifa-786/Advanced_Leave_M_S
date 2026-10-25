@@ -4,7 +4,7 @@ import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function SmartLeavePlanner() {
   const { toast } = useToast();
@@ -20,8 +20,21 @@ export default function SmartLeavePlanner() {
   const [planResult, setPlanResult] = useState(null);
 
   useEffect(() => {
-    runSimulation();
-  }, [mode]);
+    async function loadInitialPlan() {
+      try {
+        setLoading(true);
+        const res = await api.post("/analytics/smart-leave-plan", { duration: 1 });
+        setPlanResult(res.data);
+      } catch (err) {
+        console.error(err);
+        toast.error(err.response?.data?.message || "Failed to simulate leave plan");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadInitialPlan();
+  }, [toast]);
 
   async function runSimulation(overrideParams = {}) {
     try {
@@ -101,7 +114,10 @@ export default function SmartLeavePlanner() {
             <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-full sm:w-auto">
               <button
                 type="button"
-                onClick={() => setMode("DURATION")}
+                onClick={() => {
+                  setMode("DURATION");
+                  runSimulation({ mode: "DURATION", duration });
+                }}
                 className={`flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-semibold transition ${
                   mode === "DURATION"
                     ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"
@@ -112,7 +128,12 @@ export default function SmartLeavePlanner() {
               </button>
               <button
                 type="button"
-                onClick={() => setMode("DATE_RANGE")}
+                onClick={() => {
+                  setMode("DATE_RANGE");
+                  if (fromDate && toDate && new Date(toDate) >= new Date(fromDate)) {
+                    runSimulation({ mode: "DATE_RANGE", fromDate, toDate });
+                  }
+                }}
                 className={`flex-1 sm:flex-initial px-5 py-2 rounded-lg text-xs font-semibold transition ${
                   mode === "DATE_RANGE"
                     ? "bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs"

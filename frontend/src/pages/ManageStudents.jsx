@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function ManageStudents() {
   const { toast } = useToast();
@@ -21,11 +21,7 @@ export default function ManageStudents() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadStudents();
-  }, []);
-
-  async function loadStudents() {
+  const loadStudents = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get("/students/all");
@@ -36,7 +32,11 @@ export default function ManageStudents() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [toast]);
+
+  useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
 
   async function addStudent(e) {
     if (e) e.preventDefault();

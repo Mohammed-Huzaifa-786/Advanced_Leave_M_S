@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function ApproveLeave() {
   const { toast } = useToast();
@@ -13,7 +13,7 @@ export default function ApproveLeave() {
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get("/leave/all");
@@ -24,11 +24,11 @@ export default function ApproveLeave() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const approve = async (id) => {
     try {

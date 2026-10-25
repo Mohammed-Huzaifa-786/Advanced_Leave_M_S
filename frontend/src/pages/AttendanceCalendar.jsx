@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function AttendanceCalendar() {
   const { toast } = useToast();
-  const navigate = useNavigate();
   const role = localStorage.getItem("role");
   const myStudentId = localStorage.getItem("studentId");
 
@@ -18,7 +17,6 @@ export default function AttendanceCalendar() {
   const [holidays, setHolidays] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState(myStudentId || "");
-  const [loading, setLoading] = useState(false);
 
   const year = current.getFullYear();
   const month = current.getMonth();
@@ -29,8 +27,8 @@ export default function AttendanceCalendar() {
       api.get("/students/all")
         .then((res) => {
           setStudents(res.data);
-          if (res.data.length > 0 && !selectedStudentId) {
-            setSelectedStudentId(String(res.data[0].id));
+          if (res.data.length > 0) {
+            setSelectedStudentId((prev) => prev || String(res.data[0].id));
           }
         })
         .catch((err) => console.error("Error loading students:", err));
@@ -38,40 +36,42 @@ export default function AttendanceCalendar() {
   }, [role]);
 
   useEffect(() => {
+    async function loadHolidays() {
+      try {
+        const res = await api.get("/holidays/all");
+        setHolidays(res.data || []);
+      } catch (err) {
+        console.error("Holiday error:", err);
+      }
+    }
     loadHolidays();
   }, []);
 
   useEffect(() => {
     const activeStudentId = role === "admin" ? selectedStudentId : myStudentId;
-    if (activeStudentId) {
-      loadAttendance(activeStudentId);
-    } else {
-      setAttendance({});
+    if (!activeStudentId) return;
+
+    let ignore = false;
+    async function loadAttendance(id) {
+      try {
+        const res = await api.get(`/attendance/${id}/${year}/${month + 1}`);
+        if (!ignore) {
+          setAttendance(res.data || {});
+        }
+      } catch (err) {
+        console.error("Attendance error:", err);
+        if (!ignore) {
+          setAttendance({});
+        }
+      }
     }
+
+    loadAttendance(activeStudentId);
+
+    return () => {
+      ignore = true;
+    };
   }, [month, year, selectedStudentId, role, myStudentId]);
-
-  async function loadAttendance(id) {
-    if (!id) return;
-    try {
-      setLoading(true);
-      const res = await api.get(`/attendance/${id}/${year}/${month + 1}`);
-      setAttendance(res.data || {});
-    } catch (err) {
-      console.error("Attendance error:", err);
-      setAttendance({});
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadHolidays() {
-    try {
-      const res = await api.get("/holidays/all");
-      setHolidays(res.data || []);
-    } catch (err) {
-      console.error("Holiday error:", err);
-    }
-  }
 
   function daysInMonth() {
     return new Date(year, month + 1, 0).getDate();
@@ -170,7 +170,11 @@ export default function AttendanceCalendar() {
             </div>
             <select
               value={selectedStudentId}
-              onChange={(e) => setSelectedStudentId(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedStudentId(val);
+                if (!val) setAttendance({});
+              }}
               className="w-full sm:w-80 px-3.5 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-xs sm:text-sm text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
             >
               <option value="">-- Select a Student --</option>

@@ -34,7 +34,8 @@ import NotFound from "./pages/NotFound";
 // Layout
 import Layout from "./components/Layout";
 
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/useAuth";
 
 // Route guard for public-only pages (Login, Signup, Forgot Password)
 function PublicOnlyRoute({ children }) {

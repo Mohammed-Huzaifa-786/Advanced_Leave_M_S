@@ -3,8 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import ThemeToggle from "../components/ThemeToggle";
-import { useToast } from "../components/Toast";
-import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/useAuth";
 
 export default function Login() {
   const { toast } = useToast();

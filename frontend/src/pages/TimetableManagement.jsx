@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 import TimetablePrintModal from "../components/TimetablePrintModal";
 import TimetableGrid from "../components/TimetableGrid";
 
@@ -41,11 +41,7 @@ export default function TimetableManagement() {
     type: "classroom",
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [ttRes, resRes] = await Promise.all([
@@ -56,17 +52,21 @@ export default function TimetableManagement() {
       setResources(resRes.data || { subjects: [], faculties: [], rooms: [] });
 
       // If an inspected timetable is open, refresh its data reference
-      if (inspectedTimetable) {
-        const updated = (ttRes.data || []).find((t) => t.id === inspectedTimetable.id);
-        if (updated) setInspectedTimetable(updated);
-      }
+      setInspectedTimetable((prev) => {
+        if (!prev) return null;
+        return (ttRes.data || []).find((t) => t.id === prev.id) || prev;
+      });
     } catch (err) {
       console.error(err);
       toast.error("Failed to load academic timetables");
     } finally {
       setLoading(false);
     }
-  }
+  }, [toast]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   async function handlePublish(id, isPublished, confirmReplace = false) {
     try {

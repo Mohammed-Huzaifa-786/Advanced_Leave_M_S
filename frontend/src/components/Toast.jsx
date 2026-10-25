@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import Icon from "./Icons";
-
-const ToastContext = createContext(null);
+import { ToastContext } from "../context/ToastContext";
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
@@ -21,13 +20,16 @@ export function ToastProvider({ children }) {
     }
   }, [removeToast]);
 
-  const toast = {
-    success: (msg, duration) => addToast("success", msg, duration),
-    error: (msg, duration) => addToast("error", msg, duration),
-    warning: (msg, duration) => addToast("warning", msg, duration),
-    info: (msg, duration) => addToast("info", msg, duration),
-  };
-  toast.toast = toast;
+  const toast = useMemo(() => {
+    const t = {
+      success: (msg, duration) => addToast("success", msg, duration),
+      error: (msg, duration) => addToast("error", msg, duration),
+      warning: (msg, duration) => addToast("warning", msg, duration),
+      info: (msg, duration) => addToast("info", msg, duration),
+    };
+    t.toast = t;
+    return t;
+  }, [addToast]);
 
   return (
     <ToastContext.Provider value={toast}>
@@ -89,22 +91,6 @@ export function ToastProvider({ children }) {
       </div>
     </ToastContext.Provider>
   );
-}
-
-export function useToast() {
-  const ctx = useContext(ToastContext);
-  if (!ctx) {
-    // Fallback safe dummy if used outside provider
-    const fallback = {
-      success: (m) => console.log("Toast [Success]:", m),
-      error: (m) => console.error("Toast [Error]:", m),
-      warning: (m) => console.warn("Toast [Warning]:", m),
-      info: (m) => console.info("Toast [Info]:", m),
-    };
-    fallback.toast = fallback;
-    return fallback;
-  }
-  return ctx;
 }
 
 export default ToastProvider;

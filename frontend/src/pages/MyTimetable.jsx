@@ -5,7 +5,8 @@ import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
 import TimetablePrintModal from "../components/TimetablePrintModal";
-import TimetableGrid, { PERIODS_DEF } from "../components/TimetableGrid";
+import TimetableGrid from "../components/TimetableGrid";
+import { PERIODS_DEF } from "../constants/timetable";
 
 export default function MyTimetable() {
   const [timetableData, setTimetableData] = useState(null);

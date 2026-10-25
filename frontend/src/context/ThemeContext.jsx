@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useEffect, useState } from "react";
 
 const ThemeContext = createContext({
   theme: "light",
@@ -16,7 +16,7 @@ export function ThemeProvider({ children }) {
       if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
         return "dark";
       }
-    } catch (e) {
+    } catch {
       // Fallback in case localStorage is restricted
     }
     return "light";
@@ -31,7 +31,7 @@ export function ThemeProvider({ children }) {
         root.classList.remove("dark");
       }
       localStorage.setItem("theme", theme);
-    } catch (e) {
+    } catch {
       // Safe handle
     }
   }, [theme]);
@@ -47,10 +47,6 @@ export function ThemeProvider({ children }) {
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  return useContext(ThemeContext);
 }
 
 export default ThemeContext;

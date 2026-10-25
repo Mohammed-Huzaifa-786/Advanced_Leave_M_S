@@ -1,52 +1,11 @@
 import React, { useState } from "react";
 import { Icon } from "./Icons";
-
-export const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-export const PERIODS_SCHEDULE = [
-  { num: 1, label: "Period I", startTime: "08:30", endTime: "09:25", time: "08:30 – 09:25", durationMin: 55 },
-  { num: 2, label: "Period II", startTime: "09:25", endTime: "10:20", time: "09:25 – 10:20", durationMin: 55 },
-  { num: 3, label: "Period III", startTime: "10:40", endTime: "11:35", time: "10:40 – 11:35", durationMin: 55 },
-  { num: 4, label: "Period IV", startTime: "11:35", endTime: "12:30", time: "11:35 – 12:30", durationMin: 55 },
-  { num: 5, label: "Period V", startTime: "13:25", endTime: "14:20", time: "13:25 – 14:20", durationMin: 55 },
-  { num: 6, label: "Period VI", startTime: "14:20", endTime: "15:15", time: "14:20 – 15:15", durationMin: 55 },
-  { num: 7, label: "Period VII", startTime: "15:15", endTime: "16:10", time: "15:15 – 16:10", durationMin: 55 },
-];
-
-export const BREAKS = [
-  { id: "tea", label: "Tea Break", time: "10:20 – 10:40", duration: "20 min", afterPeriod: 2 },
-  { id: "lunch", label: "Lunch Break", time: "12:30 – 13:25", duration: "55 min", afterPeriod: 4 },
-];
-
-export const PERIODS_DEF = [
-  { num: 1, label: "Period I", shortLabel: "I", time: "08:30–09:25", durationMin: 55 },
-  { num: 2, label: "Period II", shortLabel: "II", time: "09:25–10:20", durationMin: 55 },
-  {
-    num: "tea",
-    label: "Tea Break",
-    shortLabel: "Tea Break",
-    time: "10:20–10:40",
-    duration: "20 min",
-    durationMin: 20,
-    isBreak: true,
-    breakType: "tea",
-  },
-  { num: 3, label: "Period III", shortLabel: "III", time: "10:40–11:35", durationMin: 55 },
-  { num: 4, label: "Period IV", shortLabel: "IV", time: "11:35–12:30", durationMin: 55 },
-  {
-    num: "lunch",
-    label: "Lunch Break",
-    shortLabel: "Lunch Break",
-    time: "12:30–13:25",
-    duration: "55 min",
-    durationMin: 55,
-    isBreak: true,
-    breakType: "lunch",
-  },
-  { num: 5, label: "Period V", shortLabel: "V", time: "13:25–14:20", durationMin: 55 },
-  { num: 6, label: "Period VI", shortLabel: "VI", time: "14:20–15:15", durationMin: 55 },
-  { num: 7, label: "Period VII", shortLabel: "VII", time: "15:15–16:10", durationMin: 55 },
-];
+import {
+  DAYS,
+  PERIODS_SCHEDULE,
+  BREAKS,
+  PERIODS_DEF,
+} from "../constants/timetable";
 
 export default function TimetablePrintModal({ timetable, onClose }) {
   // Institutional Header Settings

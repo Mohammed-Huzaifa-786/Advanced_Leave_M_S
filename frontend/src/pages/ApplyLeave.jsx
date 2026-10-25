@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function ApplyLeave() {
   const { toast } = useToast();

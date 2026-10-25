@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import Icon from "./Icons";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function Sidebar({ role: propRole, isOpen, onClose }) {
   const { role: authRole } = useAuth();

@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { TableSkeleton } from "../components/Skeleton";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 import EmptyState from "../components/EmptyState";
 
 export default function ClassAttendance() {
@@ -20,11 +20,7 @@ export default function ClassAttendance() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadClassSheet();
-  }, [date, department, semester, section]);
-
-  async function loadClassSheet() {
+  const loadClassSheet = useCallback(async () => {
     try {
       setLoading(true);
       const res = await api.get(
@@ -38,7 +34,11 @@ export default function ClassAttendance() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [date, department, semester, section, toast]);
+
+  useEffect(() => {
+    loadClassSheet();
+  }, [loadClassSheet]);
 
   function handleStatusChange(studentId, newStatus) {
     setRoster((prev) =>

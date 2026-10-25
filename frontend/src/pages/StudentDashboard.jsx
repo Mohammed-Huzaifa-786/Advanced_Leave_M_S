@@ -12,55 +12,56 @@ export default function StudentDashboard() {
     className: "",
   });
   const [attendance, setAttendance] = useState(null);
-  const [loadingAttendance, setLoadingAttendance] = useState(true);
+  const [loadingAttendance, setLoadingAttendance] = useState(() =>
+    typeof window !== "undefined" ? Boolean(localStorage.getItem("studentId")) : false
+  );
   const [timetableData, setTimetableData] = useState(null);
-  const [loadingTimetable, setLoadingTimetable] = useState(true);
+  const [loadingTimetable, setLoadingTimetable] = useState(() =>
+    typeof window !== "undefined" ? Boolean(localStorage.getItem("studentId")) : false
+  );
 
   useEffect(() => {
     const studentId = localStorage.getItem("studentId");
-    if (studentId) {
-      api.get(`/students/${studentId}`)
-        .then((res) => {
-          if (res.data) {
-            setProfile({
-              name: res.data.name || localStorage.getItem("username") || "Student",
-              username: res.data.username || localStorage.getItem("username") || "",
-              department: res.data.department || "",
-              className: res.data.className || "",
-            });
-          }
-        })
-        .catch(() => {});
+    if (!studentId) return;
 
-      api.get("/analytics/subject-attendance")
-        .then((res) => {
-          if (res.data) {
-            setAttendance(res.data);
-          }
-        })
-        .catch((err) => {
-          console.error("Attendance fetch error:", err);
-        })
-        .finally(() => {
-          setLoadingAttendance(false);
-        });
+    api.get(`/students/${studentId}`)
+      .then((res) => {
+        if (res.data) {
+          setProfile({
+            name: res.data.name || localStorage.getItem("username") || "Student",
+            username: res.data.username || localStorage.getItem("username") || "",
+            department: res.data.department || "",
+            className: res.data.className || "",
+          });
+        }
+      })
+      .catch(() => {});
 
-      api.get("/timetable/my-timetable")
-        .then((res) => {
-          if (res.data) {
-            setTimetableData(res.data);
-          }
-        })
-        .catch((err) => {
-          console.error("Timetable fetch error:", err);
-        })
-        .finally(() => {
-          setLoadingTimetable(false);
-        });
-    } else {
-      setLoadingAttendance(false);
-      setLoadingTimetable(false);
-    }
+    api.get("/analytics/subject-attendance")
+      .then((res) => {
+        if (res.data) {
+          setAttendance(res.data);
+        }
+      })
+      .catch((err) => {
+        console.error("Attendance fetch error:", err);
+      })
+      .finally(() => {
+        setLoadingAttendance(false);
+      });
+
+    api.get("/timetable/my-timetable")
+      .then((res) => {
+        if (res.data) {
+          setTimetableData(res.data);
+        }
+      })
+      .catch((err) => {
+        console.error("Timetable fetch error:", err);
+      })
+      .finally(() => {
+        setLoadingTimetable(false);
+      });
   }, []);
 
   const todayName = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][

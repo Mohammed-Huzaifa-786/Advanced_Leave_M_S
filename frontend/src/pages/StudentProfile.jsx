@@ -3,13 +3,12 @@ import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
-import { useToast } from "../components/Toast";
-import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/useAuth";
 
 export default function StudentProfile() {
   const { toast } = useToast();
   const { user, updateUser } = useAuth();
-  const [student, setStudent] = useState(null);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [department, setDepartment] = useState("");
@@ -19,32 +18,31 @@ export default function StudentProfile() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadProfile();
-  }, []);
+    async function loadProfile() {
+      try {
+        setLoading(true);
+        const studentId = localStorage.getItem("studentId");
+        if (!studentId) {
+          toast.error("Student session not found. Please log in again.");
+          setLoading(false);
+          return;
+        }
 
-  async function loadProfile() {
-    try {
-      setLoading(true);
-      const studentId = localStorage.getItem("studentId");
-      if (!studentId) {
-        toast.error("Student session not found. Please log in again.");
+        const res = await api.get(`/students/${studentId}`);
+        setName(res.data.name || "");
+        setUsername(res.data.username || "");
+        setDepartment(res.data.department || "");
+        setClassName(res.data.className || "");
+      } catch (err) {
+        console.error(err);
+        toast.error(err.response?.data?.message || "Unable to load student profile");
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const res = await api.get(`/students/${studentId}`);
-      setStudent(res.data);
-      setName(res.data.name || "");
-      setUsername(res.data.username || "");
-      setDepartment(res.data.department || "");
-      setClassName(res.data.className || "");
-    } catch (err) {
-      console.error(err);
-      toast.error(err.response?.data?.message || "Unable to load student profile");
-    } finally {
-      setLoading(false);
     }
-  }
+
+    loadProfile();
+  }, [toast]);
 
   async function updateProfile(e) {
     e.preventDefault();

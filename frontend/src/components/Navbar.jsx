@@ -1,11 +1,10 @@
 import React from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import Icon from "./Icons";
 import ThemeToggle from "./ThemeToggle";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 export default function Navbar({ isMobileMenuOpen, onToggleMobileMenu }) {
-  const navigate = useNavigate();
   const { role, user, logout } = useAuth();
   const name = user?.name || user?.username || (role === "admin" ? "Administrator" : "Student");
 

@@ -4,7 +4,7 @@ import api from "../api/axios";
 import Icon from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import Skeleton from "../components/Skeleton";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function AdminDashboard() {
   const { toast } = useToast();

@@ -5,7 +5,7 @@ import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
 import { CardSkeleton } from "../components/Skeleton";
 import EmptyState from "../components/EmptyState";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 
 export default function LeaveHistory() {
   const navigate = useNavigate();

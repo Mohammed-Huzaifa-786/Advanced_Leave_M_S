@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/axios";
 import { Icon } from "../components/Icons";
 import PageHeader from "../components/PageHeader";
-import { useToast } from "../components/Toast";
+import { useToast } from "../context/ToastContext";
 import TimetablePrintModal from "../components/TimetablePrintModal";
 import TimetableGrid from "../components/TimetableGrid";
 
@@ -28,6 +28,168 @@ const LAB_PERIOD_BLOCKS = [
   { num: 6, label: "Period VI–VII (14:20–16:10, 110m)" },
 ];
 
+function allocateDefaultSlots(subs, externalSlots = [], cohort = { department: "CSE", semester: 7, section: "A" }) {
+  const occupiedSectionSlots = new Set();
+  const occupiedFacultySlots = new Set();
+  const occupiedRoomSlots = new Set();
+  const VALID_LAB_STARTS = [1, 3, 5, 6];
+
+  (externalSlots || []).forEach((ext) => {
+    const isSameCohort =
+      ext.department === cohort.department &&
+      Number(ext.semester) === Number(cohort.semester) &&
+      ext.section === cohort.section;
+    if (!isSameCohort) {
+      if (ext.facultyId) occupiedFacultySlots.add(`${ext.facultyId}_${ext.day}_${ext.periodNumber}`);
+      if (ext.roomId) occupiedRoomSlots.add(`${ext.roomId}_${ext.day}_${ext.periodNumber}`);
+    }
+  });
+
+  const sortedSubs = [...subs].sort((a, b) => {
+    if (a.isLab && !b.isLab) return -1;
+    if (!a.isLab && b.isLab) return 1;
+    return 0;
+  });
+
+  const resultMap = new Map();
+
+  sortedSubs.forEach((s, sIdx) => {
+    const isLab = Boolean(s.isLab);
+    const duration = isLab ? (parseInt(s.consecutivePeriods, 10) || 2) : 1;
+    const weekly = parseInt(s.weeklyPeriods, 10) || (isLab ? 2 : 4);
+    const sessionCount = duration > 1 ? Math.ceil(weekly / duration) : weekly;
+    const slots = [];
+
+    for (let i = 0; i < sessionCount; i++) {
+      let placed = false;
+
+      for (let dayOffset = 0; dayOffset < WORKING_DAYS.length && !placed; dayOffset++) {
+        const dayIdx = (sIdx + i + dayOffset) % WORKING_DAYS.length;
+        const day = WORKING_DAYS[dayIdx];
+        const allowedStarts = isLab ? VALID_LAB_STARTS : [1, 2, 3, 4, 5, 6, 7];
+
+        for (const p of allowedStarts) {
+          let clash = false;
+          for (let offset = 0; offset < duration; offset++) {
+            const pNum = p + offset;
+            const secKey = `${day}_${pNum}`;
+            const facKey = s.facultyId ? `${s.facultyId}_${day}_${pNum}` : null;
+            const rmKey = s.roomId ? `${s.roomId}_${day}_${pNum}` : null;
+
+            if (
+              occupiedSectionSlots.has(secKey) ||
+              (facKey && occupiedFacultySlots.has(facKey)) ||
+              (rmKey && occupiedRoomSlots.has(rmKey))
+            ) {
+              clash = true;
+              break;
+            }
+          }
+
+          if (!clash) {
+            for (let offset = 0; offset < duration; offset++) {
+              const pNum = p + offset;
+              occupiedSectionSlots.add(`${day}_${pNum}`);
+              if (s.facultyId) occupiedFacultySlots.add(`${s.facultyId}_${day}_${pNum}`);
+              if (s.roomId) occupiedRoomSlots.add(`${s.roomId}_${day}_${pNum}`);
+            }
+
+            slots.push({
+              id: `slot_${s.id || sIdx}_${i}_${Date.now()}`,
+              day,
+              periodNumber: p,
+              duration,
+            });
+            placed = true;
+            break;
+          }
+        }
+      }
+
+      if (!placed) {
+        slots.push({
+          id: `slot_${s.id || sIdx}_${i}_fb`,
+          day: WORKING_DAYS[(sIdx + i) % WORKING_DAYS.length],
+          periodNumber: isLab ? 5 : (((sIdx + i) % 7) + 1),
+          duration,
+        });
+      }
+    }
+
+    resultMap.set(s.id, {
+      ...s,
+      slots,
+      weeklyPeriods: slots.reduce((acc, sl) => acc + (sl.duration || 1), 0),
+    });
+  });
+
+  return subs.map((s) => resultMap.get(s.id) || s);
+}
+
+function buildTemplateSubjects(resData, targetDept = "CSE", targetSem = 7, targetSec = "A") {
+  const dept = typeof targetDept === "string" ? targetDept : "CSE";
+  const sem = targetSem !== undefined && typeof targetSem !== "object" ? Number(targetSem) : 7;
+  const sec = typeof targetSec === "string" ? targetSec : "A";
+
+  const deptSubs = (resData?.subjects || []).filter(
+    (s) => s.department === dept && Number(s.semester) === Number(sem)
+  );
+
+  if (deptSubs.length === 0) return [];
+
+  const classrooms = (resData?.rooms || []).filter((r) => r.type !== "lab");
+  const labs = (resData?.rooms || []).filter((r) => r.type === "lab");
+
+  let sectionClassroom = classrooms[0] || resData?.rooms?.[0];
+  if (sec === "A") {
+    sectionClassroom = classrooms.find((r) => r.name.includes("105")) || classrooms[1] || classrooms[0];
+  } else if (sec === "B") {
+    sectionClassroom = classrooms.find((r) => r.name.includes("104")) || classrooms[0];
+  } else if (sec === "C") {
+    sectionClassroom = classrooms.find((r) => r.name.includes("106")) || classrooms[2] || classrooms[0];
+  } else {
+    const secIdx = typeof sec === "string" && sec.length > 0 ? sec.charCodeAt(0) - 65 : 0;
+    sectionClassroom = classrooms[Math.max(0, secIdx) % (classrooms.length || 1)] || classrooms[0];
+  }
+
+  const secOffset = sec === "A" ? 3 : sec === "B" ? 0 : 5;
+  const facCount = resData?.faculties?.length || 1;
+
+  const baseMapped = deptSubs.map((s, idx) => {
+    const fac = resData?.faculties?.[(idx + secOffset) % facCount];
+    let assignedRoom = sectionClassroom;
+
+    if (s.isLab) {
+      if (
+        s.code?.includes("707") ||
+        s.name?.toLowerCase().includes("security") ||
+        s.name?.toLowerCase().includes("network")
+      ) {
+        assignedRoom = labs.find((r) => r.name.toLowerCase().includes("ins")) || labs[0] || sectionClassroom;
+      } else {
+        assignedRoom = labs.find((r) => r.name.toLowerCase().includes("pc")) || labs[1] || labs[0] || sectionClassroom;
+      }
+    }
+
+    return {
+      id: s.id,
+      name: s.name,
+      code: s.code,
+      weeklyPeriods: s.weeklyPeriods || 4,
+      isLab: s.isLab || false,
+      consecutivePeriods: s.consecutivePeriods || (s.isLab ? 2 : 1),
+      facultyId: fac?.id || "",
+      facultyName: fac?.name || "",
+      roomId: assignedRoom?.id || "",
+      roomName: assignedRoom?.name || "",
+      preferredDay: "",
+      batch: s.isLab ? "B1/B2" : "All",
+    };
+  });
+
+  return allocateDefaultSlots(baseMapped, resData?.externalSlots || [], { department: dept, semester: sem, section: sec });
+}
+
 export default function TimetableGenerator() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -44,7 +206,6 @@ export default function TimetableGenerator() {
   // Step 2: Academic Resources
   const [resources, setResources] = useState({ subjects: [], faculties: [], rooms: [] });
   const [assignedSubjects, setAssignedSubjects] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -58,245 +219,80 @@ export default function TimetableGenerator() {
   const [validating, setValidating] = useState(false);
 
   useEffect(() => {
-    loadResources();
-  }, []);
+    async function loadResources() {
+      try {
+        const res = await api.get("/timetable/admin/resources");
+        const resData = res.data || { subjects: [], faculties: [], rooms: [] };
+        setResources(resData);
 
-  async function loadResources() {
-    try {
-      setLoading(true);
-      const res = await api.get("/timetable/admin/resources");
-      const resData = res.data || { subjects: [], faculties: [], rooms: [] };
-      setResources(resData);
+        if (editId) {
+          const ttRes = await api.get("/timetable/admin/list");
+          const existing = (ttRes.data || []).find((t) => String(t.id) === String(editId));
+          if (existing) {
+            setName(existing.name);
+            setDepartment(existing.department);
+            setSemester(existing.semester);
+            setSection(existing.section);
+            setAcademicYear(existing.academicYear || "2026-27");
+            setPreviewSlots(existing.slots || []);
 
-      if (editId) {
-        const ttRes = await api.get("/timetable/admin/list");
-        const existing = (ttRes.data || []).find((t) => String(t.id) === String(editId));
-        if (existing) {
-          setName(existing.name);
-          setDepartment(existing.department);
-          setSemester(existing.semester);
-          setSection(existing.section);
-          setAcademicYear(existing.academicYear || "2026-27");
-          setPreviewSlots(existing.slots || []);
-
-          // Reconstruct assignedSubjects so the admin can review or re-run generator
-          const subMap = new Map();
-          (existing.slots || []).forEach((slot) => {
-            const key = slot.subjectId || slot.subject?.id || slot.subjectCode || slot.subject?.code;
-            if (!key) return;
-            if (!subMap.has(key)) {
-              subMap.set(key, {
-                id: slot.subjectId || slot.subject?.id || Date.now(),
-                name: slot.subject?.name || slot.subjectName || "Subject",
-                code: slot.subject?.code || slot.subjectCode || "SUB",
-                facultyId: slot.facultyId || slot.faculty?.id || "",
-                facultyName: slot.faculty?.name || slot.facultyName || "",
-                roomId: slot.roomId || slot.room?.id || "",
-                roomName: slot.room?.name || slot.roomName || "",
-                weeklyPeriods: 0,
-                isLab: Boolean(slot.isLab || slot.subject?.isLab),
-                consecutivePeriods: slot.duration || (slot.isLab ? 2 : 1),
-                preferredDay: "",
-                batch: slot.batch || (slot.isLab ? "B1/B2" : "All"),
-                slots: [],
-              });
-            }
-            const item = subMap.get(key);
-            item.weeklyPeriods += (slot.duration || 1);
-            const isDuplicate = item.slots.some(
-              (s) => s.day === slot.day && Math.abs(s.periodNumber - slot.periodNumber) < (s.duration || 1)
-            );
-            if (!isDuplicate) {
-              item.slots.push({
-                id: slot.id || `slot_${slot.day}_${slot.periodNumber}`,
-                day: slot.day,
-                periodNumber: slot.periodNumber,
-                duration: slot.duration || (item.isLab ? 2 : 1),
-              });
-            }
-          });
-          if (subMap.size > 0) {
-            setAssignedSubjects(Array.from(subMap.values()));
-          }
-
-          setActiveStep(4);
-        }
-      } else {
-        // Automatically populate initial cohort subjects for immediate generation
-        const initialSubs = buildTemplateSubjects(resData, department, semester, section);
-        if (initialSubs.length > 0) {
-          setAssignedSubjects(initialSubs);
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load timetable resources");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function allocateDefaultSlots(subs, externalSlots = resources?.externalSlots || []) {
-    const occupiedSectionSlots = new Set();
-    const occupiedFacultySlots = new Set();
-    const occupiedRoomSlots = new Set();
-    const VALID_LAB_STARTS = [1, 3, 5, 6];
-
-    (externalSlots || []).forEach((ext) => {
-      const isSameCohort =
-        ext.department === department &&
-        Number(ext.semester) === Number(semester) &&
-        ext.section === section;
-      if (!isSameCohort) {
-        if (ext.facultyId) occupiedFacultySlots.add(`${ext.facultyId}_${ext.day}_${ext.periodNumber}`);
-        if (ext.roomId) occupiedRoomSlots.add(`${ext.roomId}_${ext.day}_${ext.periodNumber}`);
-      }
-    });
-
-    const sortedSubs = [...subs].sort((a, b) => {
-      if (a.isLab && !b.isLab) return -1;
-      if (!a.isLab && b.isLab) return 1;
-      return 0;
-    });
-
-    const resultMap = new Map();
-
-    sortedSubs.forEach((s, sIdx) => {
-      const isLab = Boolean(s.isLab);
-      const duration = isLab ? (parseInt(s.consecutivePeriods, 10) || 2) : 1;
-      const weekly = parseInt(s.weeklyPeriods, 10) || (isLab ? 2 : 4);
-      const sessionCount = duration > 1 ? Math.ceil(weekly / duration) : weekly;
-      const slots = [];
-
-      for (let i = 0; i < sessionCount; i++) {
-        let placed = false;
-
-        for (let dayOffset = 0; dayOffset < WORKING_DAYS.length && !placed; dayOffset++) {
-          const dayIdx = (sIdx + i + dayOffset) % WORKING_DAYS.length;
-          const day = WORKING_DAYS[dayIdx];
-          const allowedStarts = isLab ? VALID_LAB_STARTS : [1, 2, 3, 4, 5, 6, 7];
-
-          for (const p of allowedStarts) {
-            let clash = false;
-            for (let offset = 0; offset < duration; offset++) {
-              const pNum = p + offset;
-              const secKey = `${day}_${pNum}`;
-              const facKey = s.facultyId ? `${s.facultyId}_${day}_${pNum}` : null;
-              const rmKey = s.roomId ? `${s.roomId}_${day}_${pNum}` : null;
-
-              if (
-                occupiedSectionSlots.has(secKey) ||
-                (facKey && occupiedFacultySlots.has(facKey)) ||
-                (rmKey && occupiedRoomSlots.has(rmKey))
-              ) {
-                clash = true;
-                break;
+            // Reconstruct assignedSubjects so the admin can review or re-run generator
+            const subMap = new Map();
+            (existing.slots || []).forEach((slot) => {
+              const key = slot.subjectId || slot.subject?.id || slot.subjectCode || slot.subject?.code;
+              if (!key) return;
+              if (!subMap.has(key)) {
+                subMap.set(key, {
+                  id: slot.subjectId || slot.subject?.id || Date.now(),
+                  name: slot.subject?.name || slot.subjectName || "Subject",
+                  code: slot.subject?.code || slot.subjectCode || "SUB",
+                  facultyId: slot.facultyId || slot.faculty?.id || "",
+                  facultyName: slot.faculty?.name || slot.facultyName || "",
+                  roomId: slot.roomId || slot.room?.id || "",
+                  roomName: slot.room?.name || slot.roomName || "",
+                  weeklyPeriods: 0,
+                  isLab: Boolean(slot.isLab || slot.subject?.isLab),
+                  consecutivePeriods: slot.duration || (slot.isLab ? 2 : 1),
+                  preferredDay: "",
+                  batch: slot.batch || (slot.isLab ? "B1/B2" : "All"),
+                  slots: [],
+                });
               }
-            }
-
-            if (!clash) {
-              for (let offset = 0; offset < duration; offset++) {
-                const pNum = p + offset;
-                occupiedSectionSlots.add(`${day}_${pNum}`);
-                if (s.facultyId) occupiedFacultySlots.add(`${s.facultyId}_${day}_${pNum}`);
-                if (s.roomId) occupiedRoomSlots.add(`${s.roomId}_${day}_${pNum}`);
+              const item = subMap.get(key);
+              item.weeklyPeriods += (slot.duration || 1);
+              const isDuplicate = item.slots.some(
+                (s) => s.day === slot.day && Math.abs(s.periodNumber - slot.periodNumber) < (s.duration || 1)
+              );
+              if (!isDuplicate) {
+                item.slots.push({
+                  id: slot.id || `slot_${slot.day}_${slot.periodNumber}`,
+                  day: slot.day,
+                  periodNumber: slot.periodNumber,
+                  duration: slot.duration || (item.isLab ? 2 : 1),
+                });
               }
-
-              slots.push({
-                id: `slot_${s.id || sIdx}_${i}_${Date.now()}`,
-                day,
-                periodNumber: p,
-                duration,
-              });
-              placed = true;
-              break;
+            });
+            if (subMap.size > 0) {
+              setAssignedSubjects(Array.from(subMap.values()));
             }
+
+            setActiveStep(4);
           }
-        }
-
-        if (!placed) {
-          slots.push({
-            id: `slot_${s.id || sIdx}_${i}_fb`,
-            day: WORKING_DAYS[(sIdx + i) % WORKING_DAYS.length],
-            periodNumber: isLab ? 5 : (((sIdx + i) % 7) + 1),
-            duration,
-          });
-        }
-      }
-
-      resultMap.set(s.id, {
-        ...s,
-        slots,
-        weeklyPeriods: slots.reduce((acc, sl) => acc + (sl.duration || 1), 0),
-      });
-    });
-
-    return subs.map((s) => resultMap.get(s.id) || s);
-  }
-
-  function buildTemplateSubjects(resData, targetDept = department, targetSem = semester, targetSec = section) {
-    const dept = typeof targetDept === "string" ? targetDept : department;
-    const sem = targetSem !== undefined && typeof targetSem !== "object" ? Number(targetSem) : Number(semester);
-    const sec = typeof targetSec === "string" ? targetSec : section;
-
-    const deptSubs = (resData?.subjects || []).filter(
-      (s) => s.department === dept && Number(s.semester) === Number(sem)
-    );
-
-    if (deptSubs.length === 0) return [];
-
-    const classrooms = (resData?.rooms || []).filter((r) => r.type !== "lab");
-    const labs = (resData?.rooms || []).filter((r) => r.type === "lab");
-
-    let sectionClassroom = classrooms[0] || resData?.rooms?.[0];
-    if (sec === "A") {
-      sectionClassroom = classrooms.find((r) => r.name.includes("105")) || classrooms[1] || classrooms[0];
-    } else if (sec === "B") {
-      sectionClassroom = classrooms.find((r) => r.name.includes("104")) || classrooms[0];
-    } else if (sec === "C") {
-      sectionClassroom = classrooms.find((r) => r.name.includes("106")) || classrooms[2] || classrooms[0];
-    } else {
-      const secIdx = typeof sec === "string" && sec.length > 0 ? sec.charCodeAt(0) - 65 : 0;
-      sectionClassroom = classrooms[Math.max(0, secIdx) % (classrooms.length || 1)] || classrooms[0];
-    }
-
-    const secOffset = sec === "A" ? 3 : sec === "B" ? 0 : 5;
-    const facCount = resData?.faculties?.length || 1;
-
-    const baseMapped = deptSubs.map((s, idx) => {
-      const fac = resData?.faculties?.[(idx + secOffset) % facCount];
-      let assignedRoom = sectionClassroom;
-
-      if (s.isLab) {
-        if (
-          s.code?.includes("707") ||
-          s.name?.toLowerCase().includes("security") ||
-          s.name?.toLowerCase().includes("network")
-        ) {
-          assignedRoom = labs.find((r) => r.name.toLowerCase().includes("ins")) || labs[0] || sectionClassroom;
         } else {
-          assignedRoom = labs.find((r) => r.name.toLowerCase().includes("pc")) || labs[1] || labs[0] || sectionClassroom;
+          // Automatically populate initial cohort subjects for immediate generation
+          const initialSubs = buildTemplateSubjects(resData, "CSE", 7, "A");
+          if (initialSubs.length > 0) {
+            setAssignedSubjects(initialSubs);
+          }
         }
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to load timetable resources");
       }
+    }
 
-      return {
-        id: s.id,
-        name: s.name,
-        code: s.code,
-        weeklyPeriods: s.weeklyPeriods || 4,
-        isLab: s.isLab || false,
-        consecutivePeriods: s.consecutivePeriods || (s.isLab ? 2 : 1),
-        facultyId: fac?.id || "",
-        facultyName: fac?.name || "",
-        roomId: assignedRoom?.id || "",
-        roomName: assignedRoom?.name || "",
-        preferredDay: "",
-        batch: s.isLab ? "B1/B2" : "All",
-      };
-    });
-
-    return allocateDefaultSlots(baseMapped, resData?.externalSlots || []);
-  }
+    loadResources();
+  }, [editId, toast]);
 
   function addSubjectRow() {
     const defaultSub = resources.subjects[0];

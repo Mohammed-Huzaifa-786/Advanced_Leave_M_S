@@ -56,7 +56,10 @@ function allocateDefaultSlots(subs, externalSlots = [], cohort = { department: "
   sortedSubs.forEach((s, sIdx) => {
     const isLab = Boolean(s.isLab);
     const duration = isLab ? (parseInt(s.consecutivePeriods, 10) || 2) : 1;
-    const weekly = parseInt(s.weeklyPeriods, 10) || (isLab ? 2 : 4);
+    const weekly =
+      s.weeklyPeriods !== undefined && s.weeklyPeriods !== null && !isNaN(parseInt(s.weeklyPeriods, 10)) && parseInt(s.weeklyPeriods, 10) > 0
+        ? parseInt(s.weeklyPeriods, 10)
+        : (isLab ? (parseInt(s.consecutivePeriods, 10) || 2) : 3);
     const sessionCount = duration > 1 ? Math.ceil(weekly / duration) : weekly;
     const slots = [];
 
@@ -175,7 +178,10 @@ function buildTemplateSubjects(resData, targetDept = "CSE", targetSem = 7, targe
       id: s.id,
       name: s.name,
       code: s.code,
-      weeklyPeriods: s.weeklyPeriods || 4,
+      weeklyPeriods:
+        s.weeklyPeriods !== undefined && s.weeklyPeriods !== null && !isNaN(parseInt(s.weeklyPeriods, 10))
+          ? parseInt(s.weeklyPeriods, 10)
+          : (s.isLab ? (parseInt(s.consecutivePeriods, 10) || 2) : 3),
       isLab: s.isLab || false,
       consecutivePeriods: s.consecutivePeriods || (s.isLab ? 2 : 1),
       facultyId: fac?.id || "",
@@ -250,7 +256,10 @@ export default function TimetableGenerator() {
                   facultyName: slot.faculty?.name || slot.facultyName || "",
                   roomId: slot.roomId || slot.room?.id || "",
                   roomName: slot.room?.name || slot.roomName || "",
-                  weeklyPeriods: 0,
+                  weeklyPeriods:
+                    slot.subject?.weeklyPeriods !== undefined && slot.subject?.weeklyPeriods !== null
+                      ? parseInt(slot.subject.weeklyPeriods, 10)
+                      : 0,
                   isLab: Boolean(slot.isLab || slot.subject?.isLab),
                   consecutivePeriods: slot.duration || (slot.isLab ? 2 : 1),
                   preferredDay: "",
@@ -259,7 +268,6 @@ export default function TimetableGenerator() {
                 });
               }
               const item = subMap.get(key);
-              item.weeklyPeriods += (slot.duration || 1);
               const isDuplicate = item.slots.some(
                 (s) => s.day === slot.day && Math.abs(s.periodNumber - slot.periodNumber) < (s.duration || 1)
               );
@@ -270,6 +278,12 @@ export default function TimetableGenerator() {
                   periodNumber: slot.periodNumber,
                   duration: slot.duration || (item.isLab ? 2 : 1),
                 });
+              }
+            });
+            // If weeklyPeriods was not provided on slot.subject, compute from deduplicated slots
+            subMap.forEach((item) => {
+              if (!item.weeklyPeriods || item.weeklyPeriods <= 0) {
+                item.weeklyPeriods = item.slots.reduce((acc, sl) => acc + (parseInt(sl.duration, 10) || 1), 0);
               }
             });
             if (subMap.size > 0) {
@@ -366,6 +380,9 @@ export default function TimetableGenerator() {
       [field]: value,
     };
     sub.slots = slots;
+    if (field === "duration") {
+      sub.weeklyPeriods = slots.reduce((sum, s) => sum + (parseInt(s.duration, 10) || 1), 0);
+    }
     setAssignedSubjects(updated);
   }
 
@@ -441,7 +458,10 @@ export default function TimetableGenerator() {
       id: found.id,
       name: found.name,
       code: found.code,
-      weeklyPeriods: found.weeklyPeriods || 4,
+      weeklyPeriods:
+        found.weeklyPeriods !== undefined && found.weeklyPeriods !== null && !isNaN(parseInt(found.weeklyPeriods, 10))
+          ? parseInt(found.weeklyPeriods, 10)
+          : (found.isLab ? (parseInt(found.consecutivePeriods, 10) || 2) : 3),
       isLab: found.isLab || false,
       consecutivePeriods: found.consecutivePeriods || (found.isLab ? 2 : 1),
     };
@@ -525,7 +545,10 @@ export default function TimetableGenerator() {
     setAssignedSubjects((prev) =>
       prev.map((sub) => {
         const subSlots = resolvedSlots.filter(
-          (s) => String(s.subjectId) === String(sub.id) || (s.subjectCode && s.subjectCode === sub.code)
+          (s) =>
+            (s.subjectId && sub.id && String(s.subjectId) === String(sub.id)) ||
+            (s.subjectCode && sub.code && s.subjectCode.toUpperCase() === sub.code.toUpperCase()) ||
+            (s.subjectName && sub.name && s.subjectName.toLowerCase() === sub.name.toLowerCase())
         );
         if (subSlots.length === 0) return sub;
 
@@ -562,10 +585,14 @@ export default function TimetableGenerator() {
           }
         }
 
+        const totalPeriods = mergedSlots.reduce((sum, s) => sum + (parseInt(s.duration, 10) || 1), 0);
         return {
           ...sub,
           slots: mergedSlots,
-          weeklyPeriods: sorted.length,
+          weeklyPeriods:
+            sub.weeklyPeriods !== undefined && sub.weeklyPeriods !== null && !isNaN(parseInt(sub.weeklyPeriods, 10)) && parseInt(sub.weeklyPeriods, 10) > 0
+              ? parseInt(sub.weeklyPeriods, 10)
+              : totalPeriods,
         };
       })
     );

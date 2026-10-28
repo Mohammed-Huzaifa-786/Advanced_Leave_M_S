@@ -266,6 +266,49 @@ function detectConflicts(proposedSlots = [], otherExistingSlots = []) {
 }
 
 /**
+ * Accurately counts scheduled instructional periods across both expanded individual period slots
+ * and unexpanded multi-period session blocks, preventing over/under-counting.
+ */
+function countScheduledPeriods(matchingSlots) {
+  if (!matchingSlots || matchingSlots.length === 0) return 0;
+
+  // Sort slots by day and periodNumber
+  const sorted = [...matchingSlots].sort((a, b) => {
+    if (a.day !== b.day) return String(a.day).localeCompare(String(b.day));
+    return (parseInt(a.periodNumber, 10) || 0) - (parseInt(b.periodNumber, 10) || 0);
+  });
+
+  const occupied = new Set();
+  const dayPeriodsCoveredByPrevious = new Set();
+
+  for (const slot of sorted) {
+    const day = slot.day;
+    const startP = parseInt(slot.periodNumber, 10);
+    if (!day || isNaN(startP)) continue;
+
+    const key = `${day}_${startP}`;
+    // If this period was already covered as part of a multi-period session from an earlier start period,
+    // this slot is an expanded period slot (child of previous session) and does NOT introduce its own new duration span.
+    if (dayPeriodsCoveredByPrevious.has(key)) {
+      occupied.add(key);
+      continue;
+    }
+
+    const dur = parseInt(slot.duration, 10) || 1;
+    for (let offset = 0; offset < dur; offset++) {
+      const p = startP + offset;
+      const pKey = `${day}_${p}`;
+      occupied.add(pKey);
+      if (offset > 0) {
+        dayPeriodsCoveredByPrevious.add(pKey);
+      }
+    }
+  }
+
+  return occupied.size;
+}
+
+/**
  * Independent Comprehensive Validator.
  * Evaluates a timetable for both Hard Constraints and Soft Quality Constraints.
  */
@@ -299,15 +342,23 @@ function validateTimetable(slots = [], options = {}) {
   // 3. Verify that all required subjects have their weekly periods fulfilled
   if (subjects && subjects.length > 0) {
     for (const sub of subjects) {
-      const required = parseInt(sub.weeklyPeriods, 10) || 0;
+      // Admin configuration is the source of truth for weekly periods
+      let required = 0;
+      if (sub.weeklyPeriods !== undefined && sub.weeklyPeriods !== null && !isNaN(parseInt(sub.weeklyPeriods, 10))) {
+        required = parseInt(sub.weeklyPeriods, 10);
+      } else if (sub.slots && Array.isArray(sub.slots) && sub.slots.length > 0) {
+        required = countScheduledPeriods(sub.slots);
+      }
       if (required <= 0) continue;
 
-      const scheduledCount = slots.filter((s) => {
+      const matching = slots.filter((s) => {
         if (s.subjectId && sub.id && String(s.subjectId) === String(sub.id)) return true;
         if (s.subjectCode && sub.code && s.subjectCode.toUpperCase() === sub.code.toUpperCase()) return true;
         if (s.subjectName && sub.name && s.subjectName.toLowerCase() === sub.name.toLowerCase()) return true;
         return false;
-      }).length;
+      });
+
+      const scheduledCount = countScheduledPeriods(matching);
 
       if (scheduledCount < required) {
         const missing = {
@@ -451,7 +502,15 @@ async function generateClashFreeTimetable({
   let totalRequiredPeriods = 0;
 
   subjects.forEach((sub) => {
-    const weeklyPeriods = parseInt(sub.weeklyPeriods, 10) || 4;
+    let weeklyPeriods = 0;
+    if (sub.weeklyPeriods !== undefined && sub.weeklyPeriods !== null && !isNaN(parseInt(sub.weeklyPeriods, 10))) {
+      weeklyPeriods = parseInt(sub.weeklyPeriods, 10);
+    } else if (sub.slots && Array.isArray(sub.slots) && sub.slots.length > 0) {
+      weeklyPeriods = countScheduledPeriods(sub.slots);
+    } else {
+      weeklyPeriods = sub.isLab ? (parseInt(sub.consecutivePeriods, 10) || 2) : 3;
+    }
+    if (weeklyPeriods <= 0) return;
     totalRequiredPeriods += weeklyPeriods;
     const isLab = !!sub.isLab;
     const duration = isLab ? (parseInt(sub.consecutivePeriods, 10) || 2) : (parseInt(sub.consecutivePeriods, 10) || 1);
@@ -1256,24 +1315,31 @@ async function generateUserControlledTimetable({
         });
       } else {
         // Fallback if slots array not explicitly provided: create required sessions
-        const weekly = parseInt(sub.weeklyPeriods, 10) || 4;
-        const sessionCount = duration > 1 ? Math.ceil(weekly / duration) : weekly;
-        for (let i = 0; i < sessionCount; i++) {
-          sessions.push({
-            sessionId: `sess_${sub.id || subIdx}_${sessionCounter++}`,
-            subjectId: sub.id,
-            subjectName: sub.name,
-            subjectCode: sub.code,
-            facultyId: sub.facultyId || null,
-            facultyName: sub.facultyName || "TBD",
-            roomId: sub.roomId || null,
-            roomName: sub.roomName || "TBD",
-            isLab,
-            duration,
-            day: workingDays[i % workingDays.length],
-            periodNumber: duration > 1 ? (i % 2 === 0 ? 1 : 5) : ((i % 7) + 1),
-            batch: sub.batch || (isLab ? "B1/B2" : "All"),
-          });
+        let weekly = 0;
+        if (sub.weeklyPeriods !== undefined && sub.weeklyPeriods !== null && !isNaN(parseInt(sub.weeklyPeriods, 10))) {
+          weekly = parseInt(sub.weeklyPeriods, 10);
+        } else {
+          weekly = isLab ? (parseInt(sub.consecutivePeriods, 10) || 2) : 3;
+        }
+        if (weekly > 0) {
+          const sessionCount = duration > 1 ? Math.ceil(weekly / duration) : weekly;
+          for (let i = 0; i < sessionCount; i++) {
+            sessions.push({
+              sessionId: `sess_${sub.id || subIdx}_${sessionCounter++}`,
+              subjectId: sub.id,
+              subjectName: sub.name,
+              subjectCode: sub.code,
+              facultyId: sub.facultyId || null,
+              facultyName: sub.facultyName || "TBD",
+              roomId: sub.roomId || null,
+              roomName: sub.roomName || "TBD",
+              isLab,
+              duration,
+              day: workingDays[i % workingDays.length],
+              periodNumber: duration > 1 ? (i % 2 === 0 ? 1 : 5) : ((i % 7) + 1),
+              batch: sub.batch || (isLab ? "B1/B2" : "All"),
+            });
+          }
         }
       }
     });
@@ -1351,11 +1417,22 @@ async function generateUserControlledTimetable({
   // Verify weekly periods requirement for each subject
   if (subjects && subjects.length > 0) {
     subjects.forEach((sub) => {
-      const required = parseInt(sub.weeklyPeriods, 10) || 0;
+      let required = 0;
+      if (sub.weeklyPeriods !== undefined && sub.weeklyPeriods !== null && !isNaN(parseInt(sub.weeklyPeriods, 10))) {
+        required = parseInt(sub.weeklyPeriods, 10);
+      } else if (sub.slots && Array.isArray(sub.slots) && sub.slots.length > 0) {
+        required = countScheduledPeriods(sub.slots);
+      }
       if (required <= 0) return;
-      const scheduledCount = initialExpandedSlots.filter(
-        (s) => String(s.subjectId) === String(sub.id) || (s.subjectCode && s.subjectCode === sub.code)
-      ).length;
+
+      const matching = initialExpandedSlots.filter((s) => {
+        if (s.subjectId && sub.id && String(s.subjectId) === String(sub.id)) return true;
+        if (s.subjectCode && sub.code && s.subjectCode.toUpperCase() === sub.code.toUpperCase()) return true;
+        if (s.subjectName && sub.name && s.subjectName.toLowerCase() === sub.name.toLowerCase()) return true;
+        return false;
+      });
+      const scheduledCount = countScheduledPeriods(matching);
+
       if (scheduledCount < required) {
         detectedConflicts.push({
           type: "MISSING_PERIODS",
@@ -1735,6 +1812,7 @@ module.exports = {
   PERIODS,
   BREAKS,
   WORKING_DAYS,
+  countScheduledPeriods,
   calculateGapMetrics,
   detectConflicts,
   validateTimetable,
